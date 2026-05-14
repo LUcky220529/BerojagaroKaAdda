@@ -1,5 +1,5 @@
 /* ===== BerojgaroKaAdda — App Logic ===== */
-let API_KEY = localStorage.getItem('bka_tmdb_key') || '';
+let API_KEY = '4634702dba260b11258a3728ef929257';
 const BASE = 'https://api.themoviedb.org/3';
 const IMG = 'https://image.tmdb.org/t/p/';
 
@@ -22,49 +22,6 @@ async function init() {
   createParticles();
   setupNavScroll();
   setupSearch();
-  if (!API_KEY) { showApiKeyPrompt(); return; }
-  const ok = await validateKey();
-  if (!ok) { showApiKeyPrompt(); return; }
-  await loadAll();
-}
-
-async function validateKey() {
-  try { const r = await fetch(`${BASE}/configuration?api_key=${API_KEY}`); return r.ok; }
-  catch { return false; }
-}
-
-function showApiKeyPrompt() {
-  document.getElementById('heroContent').innerHTML = `
-    <div class="hero-badge">🔑 One-Time Setup</div>
-    <h1 class="hero-title" style="font-size:2.5rem;animation:heroText .8s ease both">Enter Your TMDB API Key</h1>
-    <p class="hero-desc" style="-webkit-line-clamp:unset;opacity:1;animation:heroText .8s .15s ease both">
-      1. Go to <a href="https://www.themoviedb.org/signup" target="_blank" style="color:var(--gold)">themoviedb.org/signup</a> — create free account<br/>
-      2. Go to <a href="https://www.themoviedb.org/settings/api" target="_blank" style="color:var(--gold)">Settings → API</a><br/>
-      3. Copy your <strong>API Key (v3 auth)</strong> and paste below
-    </p>
-    <div style="display:flex;gap:10px;margin-top:16px;flex-wrap:wrap">
-      <input id="apiKeyInput" type="text" placeholder="Paste TMDB API key..." style="flex:1;min-width:200px;padding:12px 20px;border-radius:30px;border:2px solid var(--border);background:var(--glass);color:var(--text);font-size:.9rem;font-family:inherit"/>
-      <button class="btn-primary" onclick="saveApiKey()">🚀 Start</button>
-    </div>`;
-}
-
-async function saveApiKey() {
-  const key = document.getElementById('apiKeyInput').value.trim();
-  if (!key) { showNotif('API key daal bhai! 😤'); return; }
-  API_KEY = key;
-  const ok = await validateKey();
-  if (!ok) { showNotif('Invalid key! Check again 🔴'); return; }
-  localStorage.setItem('bka_tmdb_key', key);
-  showNotif('Key saved! Loading movies... 🎬');
-  document.getElementById('heroContent').innerHTML = `
-    <div class="hero-badge" id="heroBadge">⚡ Trending Now</div>
-    <h1 class="hero-title" id="heroTitle">Loading...</h1>
-    <div class="hero-meta" id="heroMeta"></div>
-    <p class="hero-desc" id="heroDesc"></p>
-    <div class="hero-actions">
-      <button class="btn-primary" onclick="openHeroModal()">⭐ Rate This</button>
-      <button class="btn-ghost" onclick="openHeroModal()">ℹ️ More Info</button>
-    </div>`;
   await loadAll();
 }
 
