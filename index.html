@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8"/>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0"/>
+  <meta name="description" content="BerojgaroKaAdda - Rate movies & series apne andaaz mein. Perfection se Bakwas tak!"/>
+  <title>BerojgaroKaAdda 🎬</title>
+  <link rel="preconnect" href="https://fonts.googleapis.com"/>
+  <link href="https://fonts.googleapis.com/css2?family=Poppins:wght@300;400;500;600;700;800;900&family=Bebas+Neue&display=swap" rel="stylesheet"/>
+  <link rel="stylesheet" href="style.css"/>
+</head>
+<body>
+
+<!-- ===== NAVBAR ===== -->
+<nav class="navbar" id="navbar">
+  <div class="logo" onclick="goHome()">
+    BerojgaroKaAdda
+    <span>Rate Movies Apne Andaaz Mein</span>
+  </div>
+  <div class="search-wrap">
+    <span class="s-icon">🔍</span>
+    <input id="searchInput" class="search-input" type="text" placeholder="Search movies, series..." autocomplete="off"/>
+    <div id="searchDropdown" class="search-dropdown hidden"></div>
+  </div>
+  <div class="nav-right">
+    <button class="nav-btn" onclick="scrollToMovies()">🎬 Browse</button>
+  </div>
+</nav>
+
+<!-- ===== PARTICLES ===== -->
+<div class="particles" id="particles"></div>
+
+<!-- ===== HERO ===== -->
+<section class="hero" id="hero">
+  <div class="hero-bg" id="heroBg"></div>
+  <div class="hero-gradient"></div>
+  <div class="hero-content" id="heroContent">
+    <div class="hero-badge" id="heroBadge">⚡ Trending Now</div>
+    <h1 class="hero-title" id="heroTitle">Loading...</h1>
+    <div class="hero-meta" id="heroMeta"></div>
+    <p class="hero-desc" id="heroDesc"></p>
+    <div class="hero-actions">
+      <button class="btn-primary" id="heroRateBtn" onclick="openHeroModal()">⭐ Rate This</button>
+      <button class="btn-ghost" id="heroInfoBtn" onclick="openHeroModal()">ℹ️ More Info</button>
+    </div>
+  </div>
+  <div class="hero-dots" id="heroDots"></div>
+</section>
+
+<!-- ===== GENRE PILLS ===== -->
+<main class="main" id="mainContent">
+  <section class="genre-section">
+    <h2 class="section-title">Browse by <span>Genre</span></h2>
+    <div class="genre-pills" id="genrePills"></div>
+  </section>
+
+  <!-- ===== TRENDING SECTION ===== -->
+  <section class="movies-section" id="moviesSection">
+    <div class="section-header">
+      <h2 class="section-title" id="sectionTitle">🔥 Trending This Week</h2>
+      <div class="filter-tabs">
+        <button class="ftab active" data-type="all" onclick="setMediaType('all',this)">All</button>
+        <button class="ftab" data-type="movie" onclick="setMediaType('movie',this)">Movies</button>
+        <button class="ftab" data-type="tv" onclick="setMediaType('tv',this)">Series</button>
+      </div>
+    </div>
+    <div class="movies-grid" id="moviesGrid"></div>
+    <div class="load-more-wrap"><button class="load-more" id="loadMoreBtn" onclick="loadMore()">Load More 🎬</button></div>
+  </section>
+</main>
+
+<!-- ===== MOVIE MODAL ===== -->
+<div class="modal-overlay hidden" id="modalOverlay" onclick="closeModalOnOverlay(event)">
+  <div class="modal" id="modal">
+    <button class="modal-close" onclick="closeModal()">✕</button>
+    <div class="modal-hero" id="modalHero"></div>
+    <div class="modal-body" id="modalBody"></div>
+  </div>
+</div>
+
+<!-- ===== NOTIFICATION ===== -->
+<div class="notification hidden" id="notification"></div>
+
+<script src="app.js"></script>
+</body>
+</html>
