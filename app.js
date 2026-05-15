@@ -1,7 +1,9 @@
 /* ===== BerojgaroKaAdda — App Logic ===== */
 let API_KEY = '4634702dba260b11258a3728ef929257';
+const OMDB_KEY = 'trilogy';          // free OMDb key (no account needed)
 const BASE = 'https://api.themoviedb.org/3';
 const IMG = 'https://image.tmdb.org/t/p/';
+const OMDB_BASE = 'https://www.omdbapi.com/';
 
 const RATINGS = [
   { label: 'Perfection', emoji: '🏆', val: 5, color: '#f5c518' },
@@ -29,11 +31,14 @@ async function loadAll() {
   await loadGenres();
   await loadTrending();
   await loadHero();
+  renderGenreSpotlight();   // sync — uses predefined data
+  loadIndianCinema();        // async non-blocking
 }
 
 /* ===== PARTICLES ===== */
 function createParticles() {
   const c = document.getElementById('particles');
+  if (!c) return;
   for (let i = 0; i < 25; i++) {
     const p = document.createElement('div');
     p.className = 'particle';
@@ -70,6 +75,7 @@ async function loadGenres() {
 
 function renderGenres() {
   const c = document.getElementById('genrePills');
+  if (!c) return;
   c.innerHTML = `<button class="genre-pill ${!activeGenre ? 'active' : ''}" onclick="filterGenre(null, this)">🔥 All</button>` +
     genres.map(g => `<button class="genre-pill" onclick="filterGenre(${g.id}, this)">${g.name}</button>`).join('');
 }
@@ -92,9 +98,30 @@ async function filterGenre(id, el) {
 /* ===== TRENDING ===== */
 async function loadTrending() {
   let path = '/trending/all/week';
+  let params = { page: currentPage };
+
   if (mediaType === 'movie') path = '/trending/movie/week';
   else if (mediaType === 'tv') path = '/trending/tv/week';
-  const data = await tmdb(path, { page: currentPage });
+  else if (mediaType === 'india') {
+    path = '/discover/movie';
+    params = { ...params, with_original_language: 'hi|te|ml|ta|kn', sort_by: 'popularity.desc', 'vote_count.gte': 20 };
+  }
+
+  // If "all" and page 1, mix in some Indian movies explicitly
+  if (mediaType === 'all' && currentPage === 1) {
+    const [globalData, indianData] = await Promise.all([
+      tmdb('/trending/all/week', { page: 1 }),
+      tmdb('/discover/movie', { with_original_language: 'hi|te|ml|ta|kn', sort_by: 'popularity.desc', 'vote_count.gte': 30 })
+    ]);
+    
+    const combined = [...(globalData.results || []).slice(0, 12), ...(indianData.results || []).slice(0, 8)];
+    // Shuffle combined results
+    const shuffled = combined.sort(() => Math.random() - 0.5);
+    renderGrid(shuffled, false);
+    return;
+  }
+
+  const data = await tmdb(path, params);
   renderGrid(data.results || [], currentPage > 1);
 }
 
@@ -105,7 +132,7 @@ function setMediaType(type, el) {
   activeGenre = null;
   document.querySelectorAll('.genre-pill').forEach(p => p.classList.remove('active'));
   document.querySelector('.genre-pill')?.classList.add('active');
-  document.getElementById('sectionTitle').textContent = '🔥 Trending This Week';
+  document.getElementById('sectionTitle').textContent = type === 'india' ? '🇮🇳 Trending in India' : '🔥 Trending This Week';
   loadTrending();
 }
 
@@ -151,8 +178,16 @@ function renderGrid(items, append) {
 
 /* ===== HERO ===== */
 async function loadHero() {
-  const data = await tmdb('/trending/movie/day');
-  heroMovies = (data.results || []).filter(m => m.backdrop_path).slice(0, 6);
+  // Fetch both Global Trending and Popular Indian Movies
+  const [trending, indian] = await Promise.all([
+    tmdb('/trending/movie/day'),
+    tmdb('/discover/movie', { with_original_language: 'hi|te|ml|ta|kn', sort_by: 'popularity.desc' })
+  ]);
+  
+  // Combine and shuffle slightly to mix them
+  const combined = [...(trending.results || []).slice(0, 5), ...(indian.results || []).slice(0, 5)];
+  heroMovies = combined.filter(m => m.backdrop_path).sort(() => Math.random() - 0.5).slice(0, 8);
+  
   if (!heroMovies.length) return;
   renderHero(0);
   renderHeroDots();
@@ -224,6 +259,24 @@ function searchItemHTML(item) {
   </div>`;
 }
 
+/* ===== OMDB — Real IMDb + RT Ratings ===== */
+async function fetchOmdbRatings(imdbId) {
+  if (!imdbId) return null;
+  try {
+    const url = `${OMDB_BASE}?i=${imdbId}&apikey=${OMDB_KEY}`;
+    const res = await fetch(url);
+    if (!res.ok) return null;
+    const data = await res.json();
+    if (data.Response === 'False') return null;
+    const imdbRating  = data.imdbRating !== 'N/A' ? data.imdbRating : null;
+    const imdbVotes   = data.imdbVotes  !== 'N/A' ? data.imdbVotes  : null;
+    const metascore   = data.Metascore  !== 'N/A' ? data.Metascore  : null;
+    const rtRating    = (data.Ratings || []).find(r => r.Source === 'Rotten Tomatoes');
+    const rtScore     = rtRating ? rtRating.Value : null; // e.g. "94%"
+    return { imdbRating, imdbVotes, metascore, rtScore };
+  } catch (e) { return null; }
+}
+
 /* ===== MODAL ===== */
 async function openModal(id, type) {
   modalMovieId = id; modalMediaType = type || 'movie';
@@ -236,6 +289,47 @@ async function openModal(id, type) {
   renderModal(detail, credits, providers);
   document.getElementById('modalOverlay').classList.remove('hidden');
   document.body.style.overflow = 'hidden';
+  // Fetch real IMDb + RT ratings async (non-blocking)
+  const imdbId = detail.external_ids?.imdb_id || detail.imdb_id || '';
+  if (imdbId) {
+    fetchOmdbRatings(imdbId).then(omdb => {
+      if (omdb) injectOmdbRatings(omdb, imdbId);
+    });
+  }
+}
+
+function injectOmdbRatings(omdb, imdbId) {
+  const box = document.getElementById('omdbRatingsBox');
+  if (!box) return;
+  let html = '';
+  if (omdb.imdbRating) {
+    html += `<div class="score-card omdb-card" title="${omdb.imdbVotes ? omdb.imdbVotes + ' votes' : 'IMDb Rating'}">
+      <div class="sc-val omdb-imdb">⭐ ${omdb.imdbRating}</div>
+      <div class="sc-label">IMDb Rating</div>
+      ${omdb.imdbVotes ? `<div class="sc-sublabel">${omdb.imdbVotes} votes</div>` : ''}
+    </div>`;
+  }
+  if (omdb.rtScore) {
+    const pct = parseInt(omdb.rtScore);
+    const fresh = pct >= 60;
+    html += `<div class="score-card omdb-card" title="Rotten Tomatoes: ${omdb.rtScore}">
+      <div class="sc-val omdb-rt">${fresh ? '🍅' : '🤢'} ${omdb.rtScore}</div>
+      <div class="sc-label">Rotten Tomatoes</div>
+      <div class="sc-sublabel">${fresh ? 'Fresh 🟢' : 'Rotten 🔴'}</div>
+    </div>`;
+  }
+  if (omdb.metascore) {
+    const ms = parseInt(omdb.metascore);
+    const msColor = ms >= 61 ? 'green' : ms >= 40 ? 'gold' : 'red';
+    html += `<div class="score-card omdb-card" title="Metacritic Score">
+      <div class="sc-val ${msColor}">${omdb.metascore}</div>
+      <div class="sc-label">Metascore</div>
+    </div>`;
+  }
+  if (html) {
+    box.innerHTML = html;
+    box.style.animation = 'fadeIn .5s ease';
+  }
 }
 
 function renderModal(d, credits, prov) {
@@ -296,13 +390,17 @@ function renderModal(d, credits, prov) {
   // Genres
   if (genreNames) html += `<div class="mb-section"><h3>🎭 Genres</h3><p class="mb-desc">${genreNames}</p></div>`;
   // Scores
-  html += `<div class="mb-section"><h3>📊 Scores & Ratings</h3><div class="scores-row">
-    <div class="score-card"><div class="sc-val gold">${vote}</div><div class="sc-label">TMDB Score</div></div>
-    <div class="score-card"><div class="sc-val green">${d.vote_count || 0}</div><div class="sc-label">Votes</div></div>
-    ${d.popularity ? `<div class="score-card"><div class="sc-val">${Math.round(d.popularity)}</div><div class="sc-label">Popularity</div></div>` : ''}
-    ${imdbId ? `<div class="score-card" style="cursor:pointer" onclick="window.open('https://www.imdb.com/title/${imdbId}','_blank')"><div class="sc-val gold">IMDb</div><div class="sc-label">View on IMDb →</div></div>` : ''}
-    <div class="score-card" style="cursor:pointer" onclick="window.open('https://www.rottentomatoes.com/search?search=${encodeURIComponent(title)}','_blank')"><div class="sc-val red">🍅</div><div class="sc-label">Rotten Tomatoes →</div></div>
-  </div></div>`;
+  html += `<div class="mb-section"><h3>📊 Scores & Ratings</h3>
+    <div class="scores-row">
+      <div class="score-card"><div class="sc-val gold">${vote}</div><div class="sc-label">TMDB Score</div></div>
+      <div class="score-card"><div class="sc-val green">${d.vote_count || 0}</div><div class="sc-label">Votes</div></div>
+      ${d.popularity ? `<div class="score-card"><div class="sc-val">${Math.round(d.popularity)}</div><div class="sc-label">Popularity</div></div>` : ''}
+    </div>
+    <div class="scores-row omdb-ratings-row" id="omdbRatingsBox" style="margin-top:10px">
+      <div class="score-card omdb-skeleton"><div class="sc-val" style="font-size:.8rem;color:var(--text2)">⭐ Loading…</div><div class="sc-label">IMDb Rating</div></div>
+      <div class="score-card omdb-skeleton"><div class="sc-val" style="font-size:.8rem;color:var(--text2)">🍅 Loading…</div><div class="sc-label">Rotten Tomatoes</div></div>
+    </div>
+  </div>`;
   // Cast
   const cast = (credits.cast || []).slice(0, 12);
   if (cast.length) {
@@ -599,6 +697,121 @@ function playEpisode() {
   wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
 }
 
+/* ===== INDIAN CINEMA HUB & GENRE SPOTLIGHT ===== */
+
+async function loadIndianCinema() {
+  const today = new Date().toISOString().split('T')[0]; // 2026-05-15
+  
+  // 1. Bollywood (Hindi) - Popular Recent
+  tmdb('/discover/movie', { 
+    with_original_language: 'hi', 
+    region: 'IN',
+    sort_by: 'popularity.desc', 
+    'primary_release_date.lte': today,
+    'vote_count.gte': 5
+  }).then(data => renderCinemaScroll('bollywoodScroll', data.results || []));
+
+  // 2. Tollywood (Telugu) - Popular Recent
+  tmdb('/discover/movie', { 
+    with_original_language: 'te', 
+    region: 'IN',
+    sort_by: 'popularity.desc', 
+    'primary_release_date.lte': today,
+    'vote_count.gte': 5
+  }).then(data => renderCinemaScroll('tollywoodScroll', data.results || []));
+
+  // 3. Mollywood (Malayalam) - Popular Recent
+  tmdb('/discover/movie', { 
+    with_original_language: 'ml', 
+    region: 'IN',
+    sort_by: 'popularity.desc', 
+    'primary_release_date.lte': today,
+    'vote_count.gte': 5
+  }).then(data => renderCinemaScroll('mollywoodScroll', data.results || []));
+
+  // 4. Recent Indian (Latest 2026 releases)
+  tmdb('/discover/movie', { 
+    with_original_language: 'hi|te|ml|ta|kn', 
+    region: 'IN',
+    sort_by: 'primary_release_date.desc', 
+    'primary_release_date.lte': today,
+    'vote_count.gte': 2
+  }).then(data => renderCinemaScroll('recentIndianScroll', (data.results || []).slice(0, 15), true));
+}
+
+function renderCinemaScroll(id, items, isNew = false) {
+  const container = document.getElementById(id);
+  if (!container) return;
+  if (!items.length) { container.innerHTML = '<div class="cs-loading">No movies found.</div>'; return; }
+
+  container.innerHTML = items.map(item => {
+    const title = item.title || item.name;
+    const year = (item.release_date || '').slice(0, 4);
+    const vote = item.vote_average ? item.vote_average.toFixed(1) : '—';
+    return `
+      <div class="cinema-card" onclick="openModal(${item.id}, 'movie')">
+        <div class="cc-poster">
+          <img src="${IMG}w185${item.poster_path}" alt="${title}" class="cc-img" loading="lazy"/>
+          <span class="cc-vote">⭐ ${vote}</span>
+          ${isNew ? '<span class="cc-new">New</span>' : ''}
+        </div>
+        <div class="cc-info">
+          <div class="cc-title">${title}</div>
+          <div class="cc-year">${year}</div>
+        </div>
+      </div>`;
+  }).join('');
+}
+
+function renderGenreSpotlight() {
+  const spotlightGrid = document.getElementById('genreVisualGrid');
+  if (!spotlightGrid) return;
+
+  const visualGenres = [
+    { name: 'Action', emoji: '💥', color: 'linear-gradient(135deg, #ff416c, #ff4b2b)' },
+    { name: 'Comedy', emoji: '😂', color: 'linear-gradient(135deg, #fcebb1, #f1bb3a)' },
+    { name: 'Horror', emoji: '👻', color: 'linear-gradient(135deg, #232526, #414345)' },
+    { name: 'Romance', emoji: '💖', color: 'linear-gradient(135deg, #ff9a9e, #fecfef)' },
+    { name: 'Sci-Fi', emoji: '🚀', color: 'linear-gradient(135deg, #00d2ff, #3a7bd5)' },
+    { name: 'Thriller', emoji: '🗡️', color: 'linear-gradient(135deg, #1f4037, #99f2c8)' },
+    { name: 'Animation', emoji: '🎨', color: 'linear-gradient(135deg, #eecda3, #ef629f)' },
+    { name: 'Drama', emoji: '🎭', color: 'linear-gradient(135deg, #304352, #d7d2cc)' }
+  ];
+
+  spotlightGrid.innerHTML = visualGenres.map(g => `
+    <div class="genre-vis-card" style="background: ${g.color}" onclick="filterGenreByName('${g.name}')">
+      <span class="gv-emoji">${g.emoji}</span>
+      <span class="gv-name">${g.name}</span>
+    </div>
+  `).join('');
+}
+
+function filterGenreByName(name) {
+  const genre = genres.find(g => g.name.toLowerCase() === name.toLowerCase());
+  if (genre) {
+    // Find the genre pill and click it
+    const pills = document.querySelectorAll('.genre-pill');
+    pills.forEach(p => {
+      if (p.textContent.includes(name)) {
+        filterGenre(genre.id, p);
+        scrollToMovies();
+      }
+    });
+  }
+}
+
+async function filterByLang(lang, label) {
+  activeGenre = null;
+  document.getElementById('sectionTitle').textContent = `🇮🇳 ${label}`;
+  document.querySelectorAll('.genre-pill').forEach(p => p.classList.remove('active'));
+  document.querySelector('.genre-pill')?.classList.add('active'); // "All" pill
+  
+  currentPage = 1;
+  const data = await tmdb('/discover/movie', { with_original_language: lang, sort_by: 'popularity.desc', page: 1 });
+  renderGrid(data.results || [], false);
+  scrollToMovies();
+}
+
 function selectRating(val, el) {
   selectedRating = val;
   document.querySelectorAll('.rating-btn').forEach(b => b.classList.remove('selected'));
@@ -651,9 +864,97 @@ function closeModal() {
 }
 function closeModalOnOverlay(e) { if (e.target === document.getElementById('modalOverlay')) closeModal(); }
 
+/* ===== SIMILAR MOVIE FINDER LOGIC ===== */
+
+async function findSimilarMovies() {
+  const input = document.getElementById('aiSearchInput');
+  const query = input.value.trim();
+  const resultsContainer = document.getElementById('aiResults');
+
+  if (!query) { showNotif('Please enter a movie name! 🎬'); return; }
+
+  resultsContainer.classList.remove('hidden');
+  resultsContainer.innerHTML = '<div class="loader"></div>';
+
+  try {
+    // 1. Search for the movie to get ID
+    const searchData = await tmdb('/search/movie', { query });
+    if (!searchData.results?.length) {
+      resultsContainer.innerHTML = '<div class="ai-no-results">No movie found with that name. Try again! 🧐</div>';
+      return;
+    }
+
+    const movie = searchData.results[0];
+    const movieId = movie.id;
+
+    // 2. Get Credits (Director & Lead Actor)
+    const credits = await tmdb(`/movie/${movieId}/credits`);
+    const director = credits.crew.find(c => c.job === 'Director');
+    const leadActor = credits.cast[0];
+
+    // 3. Fetch Recommendations in Parallel
+    const [recs, actorMovies, directorMovies] = await Promise.all([
+      tmdb(`/movie/${movieId}/recommendations`),
+      leadActor ? tmdb('/discover/movie', { with_cast: leadActor.id, sort_by: 'popularity.desc' }) : Promise.resolve({results:[]}),
+      director ? tmdb('/discover/movie', { with_crew: director.id, sort_by: 'popularity.desc' }) : Promise.resolve({results:[]})
+    ]);
+
+    // 4. Render Rows
+    let html = `
+      <div class="ai-movie-source" style="padding:20px; background:rgba(255,255,255,0.03); border-radius:12px; border:1px solid var(--border);">
+        <p style="font-size:0.8rem; color:var(--gold); margin-bottom:5px;">Recommendations based on:</p>
+        <h3 style="font-size:1.4rem;">${movie.title}</h3>
+      </div>
+    `;
+
+    // Category: Recommendations (Genre/Type)
+    if (recs.results?.length) {
+      html += `
+        <div class="cinema-section">
+          <div class="ai-row-title">🤖 Based on <span>Movie Type & Vibe</span></div>
+          <div class="cinema-scroll" id="aiRecScroll"></div>
+        </div>
+      `;
+    }
+
+    // Category: Actor
+    if (actorMovies.results?.length > 1) {
+      html += `
+        <div class="cinema-section">
+          <div class="ai-row-title">🎭 More from Lead Actor: <span>${leadActor.name}</span></div>
+          <div class="cinema-scroll" id="aiActorScroll"></div>
+        </div>
+      `;
+    }
+
+    // Category: Director
+    if (directorMovies.results?.length > 1) {
+      html += `
+        <div class="cinema-section">
+          <div class="ai-row-title">🎬 From the Director: <span>${director.name}</span></div>
+          <div class="cinema-scroll" id="aiDirectorScroll"></div>
+        </div>
+      `;
+    }
+
+    resultsContainer.innerHTML = html;
+
+    // Render the actual scrolls
+    if (recs.results?.length) renderCinemaScroll('aiRecScroll', recs.results.slice(0, 10));
+    if (actorMovies.results?.length > 1) renderCinemaScroll('aiActorScroll', actorMovies.results.filter(m => m.id !== movieId).slice(0, 10));
+    if (directorMovies.results?.length > 1) renderCinemaScroll('aiDirectorScroll', directorMovies.results.filter(m => m.id !== movieId).slice(0, 10));
+
+    resultsContainer.scrollIntoView({ behavior: 'smooth' });
+
+  } catch (err) {
+    resultsContainer.innerHTML = '<div class="ai-no-results">Something went wrong. Please try again! 🔴</div>';
+  }
+}
+
 /* ===== UTILS ===== */
 function goHome() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function scrollToMovies() { document.getElementById('moviesSection').scrollIntoView({ behavior: 'smooth' }); }
+function scrollToAI() { document.getElementById('aiSuggestions').scrollIntoView({ behavior: 'smooth' }); }
 function showNotif(msg) {
   const n = document.getElementById('notification');
   n.textContent = msg; n.classList.remove('hidden');

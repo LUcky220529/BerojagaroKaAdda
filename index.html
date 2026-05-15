@@ -23,6 +23,7 @@
     <div id="searchDropdown" class="search-dropdown hidden"></div>
   </div>
   <div class="nav-right">
+    <button class="nav-btn" onclick="scrollToAI()">✨ Similar Finder</button>
     <button class="nav-btn" onclick="scrollToMovies()">🎬 Browse</button>
   </div>
 </nav>
@@ -49,10 +50,6 @@
 
 <!-- ===== GENRE PILLS ===== -->
 <main class="main" id="mainContent">
-  <section class="genre-section">
-    <h2 class="section-title">Browse by <span>Genre</span></h2>
-    <div class="genre-pills" id="genrePills"></div>
-  </section>
 
   <!-- ===== TRENDING SECTION ===== -->
   <section class="movies-section" id="moviesSection">
@@ -60,12 +57,81 @@
       <h2 class="section-title" id="sectionTitle">🔥 Trending This Week</h2>
       <div class="filter-tabs">
         <button class="ftab active" data-type="all" onclick="setMediaType('all',this)">All</button>
+        <button class="ftab" data-type="india" onclick="setMediaType('india',this)">🇮🇳 India</button>
         <button class="ftab" data-type="movie" onclick="setMediaType('movie',this)">Movies</button>
         <button class="ftab" data-type="tv" onclick="setMediaType('tv',this)">Series</button>
       </div>
     </div>
     <div class="movies-grid" id="moviesGrid"></div>
     <div class="load-more-wrap"><button class="load-more" id="loadMoreBtn" onclick="loadMore()">Load More 🎬</button></div>
+  </section>
+
+  <!-- ===== INDIA CINEMA HUB ===== -->
+  <section class="india-hub" id="indiaHub">
+    <div class="india-hub-banner">
+      <span class="ihb-flag">🇮🇳</span>
+      <div>
+        <h2 class="ihb-title">Indian Cinema Hub</h2>
+        <p class="ihb-sub">Bollywood · Tollywood · Mollywood & More</p>
+      </div>
+    </div>
+
+    <div class="cinema-section">
+      <div class="cinema-section-header">
+        <div class="cinema-section-title"><span class="clang-badge bollywood-badge">🎬 Bollywood</span><span class="cs-sub">Hindi Cinema</span></div>
+        <button class="cs-more-btn" onclick="filterByLang('hi','Bollywood — Hindi')">See All →</button>
+      </div>
+      <div class="cinema-scroll" id="bollywoodScroll"><div class="cs-loading">Loading...</div></div>
+    </div>
+
+    <div class="cinema-section">
+      <div class="cinema-section-header">
+        <div class="cinema-section-title"><span class="clang-badge tollywood-badge">🌟 Tollywood</span><span class="cs-sub">Telugu Cinema</span></div>
+        <button class="cs-more-btn" onclick="filterByLang('te','Tollywood — Telugu')">See All →</button>
+      </div>
+      <div class="cinema-scroll" id="tollywoodScroll"><div class="cs-loading">Loading...</div></div>
+    </div>
+
+    <div class="cinema-section">
+      <div class="cinema-section-header">
+        <div class="cinema-section-title"><span class="clang-badge mollywood-badge">🌿 Mollywood</span><span class="cs-sub">Malayalam Cinema</span></div>
+        <button class="cs-more-btn" onclick="filterByLang('ml','Mollywood — Malayalam')">See All →</button>
+      </div>
+      <div class="cinema-scroll" id="mollywoodScroll"><div class="cs-loading">Loading...</div></div>
+    </div>
+
+    <div class="cinema-section">
+      <div class="cinema-section-header">
+        <div class="cinema-section-title"><span class="clang-badge recent-badge">🆕 Recent Releases</span><span class="cs-sub">Fresh Indian Cinema 2026</span></div>
+      </div>
+      <div class="cinema-scroll" id="recentIndianScroll"><div class="cs-loading">Loading...</div></div>
+    </div>
+  </section>
+
+  <!-- ===== SIMILAR MOVIE FINDER ===== -->
+  <section class="ai-suggestions-section" id="aiSuggestions">
+    <div class="section-header">
+      <h2 class="section-title">🎬 Similar <span>Movie Finder</span></h2>
+      <p class="cs-sub" style="margin-top:-10px; margin-bottom:15px;">Enter a movie to get recommendations based on its Genre, Cast, and Director.</p>
+    </div>
+    <div class="ai-search-box">
+      <input type="text" id="aiSearchInput" class="search-input" placeholder="Enter a movie you love (e.g. Inception, Jawan)...">
+      <button class="btn-primary" onclick="findSimilarMovies()">Find Recommendations ✨</button>
+    </div>
+    <div id="aiResults" class="ai-results-container hidden">
+      <!-- Dynamic results will be injected here -->
+    </div>
+  </section>
+
+  <!-- ===== GENRE SPOTLIGHT ===== -->
+  <section class="genre-spotlight-section">
+    <h2 class="section-title">🎭 Browse by <span>Genre</span></h2>
+    <div class="genre-visual-grid" id="genreVisualGrid"></div>
+  </section>
+
+  <!-- ===== GENRE PILLS (filter) ===== -->
+  <section class="genre-section" style="padding-top:0">
+    <div class="genre-pills" id="genrePills"></div>
   </section>
 </main>
 
