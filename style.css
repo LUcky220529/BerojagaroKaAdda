@@ -304,7 +304,8 @@ a{color:var(--gold);text-decoration:none}
   .modal-body{padding:16px 8px}
   .mh-info h1{font-size:1.8rem}
   .hero-dots{right:20px}
-  .nav-right{display:none}
+  .nav-right{display:flex;gap:6px}
+  .nav-btn{padding:5px 10px;font-size:0.75rem}
   /* ===== PLAYER MOBILE FIX ===== */
   .modal-overlay{padding:20px 0}
   .modal{border-radius:12px 12px 0 0;width:100%;max-width:100%}
