@@ -241,11 +241,11 @@
           c.style.display = 'grid';
           c.innerHTML = history.map(m => `
             <div class="movie-card" onclick="window.location.href='movie.html?id=${m.id}&type=${m.mediaType || 'movie'}'">
-              <div class="card-poster" style="height: 200px">
-                <img src="${m.poster}" alt="${m.title}" style="height:100%; object-fit:cover;"/>
+              <div class="card-poster">
+                <img src="${m.poster}" alt="${m.title}"/>
               </div>
-              <div class="card-info" style="padding:10px">
-                <h3 style="font-size:0.9rem; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${m.title}</h3>
+              <div class="card-info">
+                <h3>${m.title}</h3>
               </div>
             </div>
           `).join('');
@@ -416,11 +416,11 @@
 
     container.innerHTML = watched.map(m => `
       <div class="movie-card" onclick="window.location.href='movie.html?id=${m.id}&type=${m.mediaType || 'movie'}'">
-        <div class="card-poster" style="height: 200px">
-          <img src="${m.poster}" alt="${m.title}" style="height:100%; object-fit:cover;"/>
+        <div class="card-poster">
+          <img src="${m.poster}" alt="${m.title}"/>
         </div>
-        <div class="card-info" style="padding:10px">
-          <h3 style="font-size:0.9rem; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${m.title}</h3>
+        <div class="card-info">
+          <h3>${m.title}</h3>
         </div>
       </div>
     `).join('');
