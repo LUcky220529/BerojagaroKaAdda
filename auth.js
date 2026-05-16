@@ -70,13 +70,27 @@ async function promptForUsername() {
   };
 }
 
+let isLoggingIn = false;
+
 window.loginUser = async function() {
+  if (isLoggingIn) return;
   console.log("Login button clicked!");
+  
+  isLoggingIn = true;
+  const btn = document.getElementById('authBtn');
+  if (btn) btn.innerHTML = "⏳ Wait...";
+  
   try {
     await auth.signInWithPopup(provider);
   } catch (error) {
     console.error("Login failed:", error);
-    alert("Login failed: " + error.message);
+    // Ignore errors caused by the user closing the popup or clicking twice
+    if (error.code !== 'auth/popup-closed-by-user' && error.code !== 'auth/cancelled-popup-request') {
+      alert("Login failed: " + error.message);
+    }
+  } finally {
+    isLoggingIn = false;
+    if (!currentUser) window.updateAuthUI(null);
   }
 };
 
