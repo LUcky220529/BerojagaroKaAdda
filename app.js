@@ -359,13 +359,14 @@ async function loadMoviePage(id, type) {
   if (dd) dd.classList.add('hidden');
 
   try {
-    const [detail, credits, providers] = await Promise.all([
+    const [detail, credits, providers, isWatched] = await Promise.all([
       tmdb(`/${type}/${id}`, { append_to_response: 'external_ids' }),
       tmdb(`/${type}/${id}/credits`),
-      tmdb(`/${type}/${id}/watch/providers`)
+      tmdb(`/${type}/${id}/watch/providers`),
+      window.checkIsWatched(id)
     ]);
 
-    renderModal(detail, credits, providers);
+    renderModal(detail, credits, providers, isWatched);
 
     // Fetch real IMDb + RT ratings async (non-blocking)
     const imdbId = detail.external_ids?.imdb_id || detail.imdb_id || '';
@@ -425,7 +426,7 @@ function injectOmdbRatings(omdb, imdbId, tmdbVote) {
   }
 }
 
-function renderModal(d, credits, prov) {
+function renderModal(d, credits, prov, isWatched) {
   const title = d.title || d.name || '';
   const year = (d.release_date || d.first_air_date || '').slice(0, 4);
   const runtime = d.runtime ? `${d.runtime} min` : (d.episode_run_time?.[0] ? `${d.episode_run_time[0]} min/ep` : '');
@@ -452,6 +453,9 @@ function renderModal(d, credits, prov) {
         <span class="mh-tag">${d.original_language?.toUpperCase() || ''}</span>
         ${d.seasons ? `<span class="mh-tag">${d.number_of_seasons} Season${d.number_of_seasons > 1 ? 's' : ''}</span>` : ''}
       </div>
+      <button id="watchedBtn" class="btn-ghost" onclick="handleToggleWatched()" style="margin-top: 15px; border-color: ${isWatched ? 'var(--gold)' : 'var(--border)'}; color: ${isWatched ? 'var(--gold)' : '#fff'}; background: rgba(0,0,0,0.4); padding: 8px 16px; border-radius: 20px; font-weight: 600;">
+        ${isWatched ? '✅ Watched' : '👁️ Mark as Watched'}
+      </button>
     </div>`;
 
   let html = '';
@@ -1385,3 +1389,32 @@ function showNotif(msg) {
   n.textContent = msg; n.classList.remove('hidden');
   setTimeout(() => n.classList.add('hidden'), 2500);
 }
+window.handleToggleWatched = async function() {
+  const btn = document.getElementById('watchedBtn');
+  if (!btn || !window.currentMovieData) return;
+  
+  const user = window.getCurrentUser ? window.getCurrentUser() : null;
+  if (!user) {
+    if (window.showNotif) window.showNotif("Please sign in to mark as watched! 🔐");
+    return;
+  }
+
+  const oldHtml = btn.innerHTML;
+  btn.innerHTML = '⏳...';
+  const result = await window.toggleWatchedMovie(window.currentMovieData);
+  
+  if (result === 'added') {
+    btn.innerHTML = '✅ Watched';
+    btn.style.color = 'var(--gold)';
+    btn.style.borderColor = 'var(--gold)';
+    if (window.showNotif) window.showNotif("Added to your public 'Watched' list! 🎬");
+  } else if (result === 'removed') {
+    btn.innerHTML = '👁️ Mark as Watched';
+    btn.style.color = '#fff';
+    btn.style.borderColor = 'var(--border)';
+    if (window.showNotif) window.showNotif("Removed from your public 'Watched' list.");
+  } else {
+    btn.innerHTML = oldHtml;
+    if (window.showNotif) window.showNotif("Failed to update watched status 😢");
+  }
+};

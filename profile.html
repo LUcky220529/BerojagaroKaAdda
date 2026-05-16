@@ -146,11 +146,16 @@
 
   <div class="profile-tabs" id="profileTabs">
     <button class="ptab active" onclick="switchTab('reviewsTab', this)">📝 Reviews</button>
-    <button class="ptab" onclick="switchTab('historyTab', this)" id="historyTabBtn">▶️ Watched</button>
+    <button class="ptab" onclick="switchTab('watchedTab', this)">🎬 Watched</button>
+    <button class="ptab" onclick="switchTab('historyTab', this)" id="historyTabBtn">▶️ History (Private)</button>
   </div>
 
   <div id="reviewsTab" class="tab-content active">
     <div id="userReviewsContainer"><div class="empty-state">Loading reviews...</div></div>
+  </div>
+
+  <div id="watchedTab" class="tab-content">
+    <div class="history-grid" id="userWatchedContainer"><div class="empty-state">No movies marked as watched yet.</div></div>
   </div>
 
   <div id="historyTab" class="tab-content">
@@ -222,6 +227,7 @@
     }
 
     loadProfileReviews();
+    loadProfileWatched();
 
     if (isOwnProfile && window.loadWatchHistory) {
       // Temporarily override renderContinueWatching
@@ -396,6 +402,28 @@
       </div>
       `;
     }).join('');
+  }
+
+  async function loadProfileWatched() {
+    const container = document.getElementById('userWatchedContainer');
+    if (!container || !window.getUserWatchedMovies) return;
+
+    const watched = await window.getUserWatchedMovies(targetUid);
+    if (watched.length === 0) {
+      container.innerHTML = '<div class="empty-state">No movies marked as watched yet.</div>';
+      return;
+    }
+
+    container.innerHTML = watched.map(m => `
+      <div class="movie-card" onclick="window.location.href='movie.html?id=${m.id}&type=${m.mediaType || 'movie'}'">
+        <div class="card-poster" style="height: 200px">
+          <img src="${m.poster}" alt="${m.title}" style="height:100%; object-fit:cover;"/>
+        </div>
+        <div class="card-info" style="padding:10px">
+          <h3 style="font-size:0.9rem; margin:0; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;">${m.title}</h3>
+        </div>
+      </div>
+    `).join('');
   }
 
 </script>

@@ -241,3 +241,61 @@ window.getPublicProfile = async function(uid) {
   }
 };
 
+window.toggleWatchedMovie = async function(movieData) {
+  const user = window.getCurrentUser ? window.getCurrentUser() : null;
+  if (!db || !user) return false;
+
+  const watchedId = `${movieData.id}_${user.uid}`;
+  const ref = db.collection('watched').doc(watchedId);
+
+  try {
+    const doc = await ref.get();
+    if (doc.exists) {
+      await ref.delete();
+      return 'removed';
+    } else {
+      await ref.set({
+        id: movieData.id.toString(),
+        uid: user.uid,
+        title: movieData.title || movieData.name || 'Unknown',
+        poster: movieData.poster_path ? `https://image.tmdb.org/t/p/w342${movieData.poster_path}` : (movieData.poster || ''),
+        mediaType: movieData.media_type || (movieData.title ? 'movie' : 'tv'),
+        timestamp: Date.now()
+      });
+      return 'added';
+    }
+  } catch (e) {
+    console.error("Error toggling watched status:", e);
+    return false;
+  }
+};
+
+window.checkIsWatched = async function(movieId) {
+  const user = window.getCurrentUser ? window.getCurrentUser() : null;
+  if (!db || !user || !movieId) return false;
+
+  try {
+    const watchedId = `${movieId}_${user.uid}`;
+    const doc = await db.collection('watched').doc(watchedId).get();
+    return doc.exists;
+  } catch (e) {
+    return false;
+  }
+};
+
+window.getUserWatchedMovies = async function(uid) {
+  if (!db || !uid) return [];
+  try {
+    const snapshot = await db.collection('watched')
+      .where('uid', '==', uid)
+      .get();
+    
+    const watched = [];
+    snapshot.forEach(doc => watched.push(doc.data()));
+    return watched.sort((a, b) => b.timestamp - a.timestamp);
+  } catch (e) {
+    console.error("Error fetching user watched movies:", e);
+    return [];
+  }
+};
+
