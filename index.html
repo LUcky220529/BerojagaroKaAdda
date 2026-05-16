@@ -62,6 +62,17 @@
 <!-- ===== GENRE PILLS ===== -->
 <main class="main" id="mainContent">
 
+  <!-- ===== GENRE SPOTLIGHT ===== -->
+  <section class="genre-spotlight-section">
+    <h2 class="section-title">🎭 Browse by <span>Genre</span></h2>
+    <div class="genre-visual-grid" id="genreVisualGrid"></div>
+  </section>
+
+  <!-- ===== GENRE PILLS (filter) ===== -->
+  <section class="genre-section" style="padding-top:0; padding-bottom:0;">
+    <div class="genre-pills" id="genrePills"></div>
+  </section>
+
   <!-- ===== TRENDING SECTION ===== -->
   <section class="movies-section" id="moviesSection">
     <div class="section-header">
@@ -119,31 +130,9 @@
     </div>
   </section>
 
-  <!-- ===== SIMILAR MOVIE FINDER ===== -->
-  <section class="ai-suggestions-section" id="aiSuggestions">
-    <div class="section-header">
-      <h2 class="section-title">🎬 Similar <span>Movie Finder</span></h2>
-      <p class="cs-sub" style="margin-top:-10px; margin-bottom:15px;">Enter a movie to get recommendations based on its Genre, Cast, and Director.</p>
-    </div>
-    <div class="ai-search-box">
-      <input type="text" id="aiSearchInput" class="search-input" placeholder="Enter a movie you love (e.g. Inception, Jawan)...">
-      <button class="btn-primary" onclick="findSimilarMovies()">Find Recommendations ✨</button>
-    </div>
-    <div id="aiResults" class="ai-results-container hidden">
-      <!-- Dynamic results will be injected here -->
-    </div>
-  </section>
 
-  <!-- ===== GENRE SPOTLIGHT ===== -->
-  <section class="genre-spotlight-section">
-    <h2 class="section-title">🎭 Browse by <span>Genre</span></h2>
-    <div class="genre-visual-grid" id="genreVisualGrid"></div>
-  </section>
 
-  <!-- ===== GENRE PILLS (filter) ===== -->
-  <section class="genre-section" style="padding-top:0">
-    <div class="genre-pills" id="genrePills"></div>
-  </section>
+
 </main>
 
 

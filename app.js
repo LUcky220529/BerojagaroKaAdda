@@ -29,15 +29,20 @@ async function init() {
   const movieId = params.get('id') || localStorage.getItem('bka_nav_id');
   const type = params.get('type') || localStorage.getItem('bka_nav_type') || 'movie';
 
-  // If the movie page specific element exists, we are on movie.html
-  if (document.getElementById('modalHero')) {
+  // Detect page type
+  const isPersonPage = !!document.getElementById('personContainer');
+  const isMoviePage = !!document.getElementById('modalHero') && !isPersonPage;
+  const isHomePage = !!document.getElementById('moviesGrid');
+
+  if (isPersonPage) {
+    await loadPersonPage();
+  } else if (isMoviePage) {
     if (movieId) {
       await loadMoviePage(movieId, type);
     } else {
       document.getElementById('modalHero').innerHTML = '<h2 style="padding:40px;text-align:center">Movie not found. Please go back to the homepage.</h2>';
     }
-  } else if (document.getElementById('moviesGrid')) {
-    // Otherwise we are on the homepage
+  } else if (isHomePage) {
     await loadAll();
   }
 }
@@ -260,17 +265,23 @@ function openHeroModal() { if (heroMovies[heroIdx]) openModal(heroMovies[heroIdx
 /* ===== SEARCH ===== */
 function setupSearch() {
   const input = document.getElementById('searchInput');
+  if (!input) return;
   let timer;
   input.addEventListener('input', () => { clearTimeout(timer); timer = setTimeout(() => searchMovies(input.value.trim()), 400); });
   input.addEventListener('focus', () => { if (input.value.trim()) searchMovies(input.value.trim()); });
-  document.addEventListener('click', e => { if (!e.target.closest('.search-wrap')) document.getElementById('searchDropdown').classList.add('hidden'); });
+  document.addEventListener('click', e => { 
+    const dd = document.getElementById('searchDropdown');
+    if (dd && !e.target.closest('.search-wrap')) dd.classList.add('hidden'); 
+  });
 }
 
 async function searchMovies(q) {
   const dd = document.getElementById('searchDropdown');
   if (!q || !API_KEY) { dd.classList.add('hidden'); return; }
+  
   const data = await tmdb('/search/multi', { query: q, page: 1 });
-  const results = (data.results || []).filter(r => (r.media_type === 'movie' || r.media_type === 'tv') && r.poster_path).slice(0, 8);
+  const results = (data.results || []).filter(r => (r.media_type === 'movie' || r.media_type === 'tv') && r.poster_path).slice(0, 4);
+  
   if (!results.length) {
     const similar = await tmdb('/search/multi', { query: q.split(' ')[0], page: 1 });
     const sug = (similar.results || []).filter(r => (r.media_type === 'movie' || r.media_type === 'tv') && r.poster_path).slice(0, 5);
@@ -278,7 +289,26 @@ async function searchMovies(q) {
       sug.map(s => searchItemHTML(s)).join('');
     dd.classList.remove('hidden'); return;
   }
-  dd.innerHTML = results.map(r => searchItemHTML(r)).join('');
+
+  let html = `<div style="padding: 10px 15px 5px 15px; font-size: 0.75rem; color: var(--gold); font-weight: 600; text-transform: uppercase; letter-spacing: 1px;">Top Matches</div>`;
+  html += results.map(r => searchItemHTML(r)).join('');
+
+  // Fetch similar recommendations for the top match
+  try {
+    const topMatch = results[0];
+    const recs = await tmdb(`/${topMatch.media_type}/${topMatch.id}/recommendations`);
+    const recResults = (recs.results || []).filter(r => r.poster_path).slice(0, 4);
+
+    if (recResults.length) {
+      html += `<div style="padding: 12px 15px 5px 15px; font-size: 0.75rem; color: var(--green); font-weight: 600; text-transform: uppercase; letter-spacing: 1px; border-top: 1px solid rgba(255,255,255,0.1); margin-top: 5px; background: rgba(0,0,0,0.2);">Similar to ${topMatch.title || topMatch.name}</div>`;
+      // Ensure media_type is set for recommendations since /recommendations doesn't always include it
+      html += recResults.map(r => searchItemHTML({ ...r, media_type: topMatch.media_type })).join('');
+    }
+  } catch (e) {
+    console.error("Error fetching recommendations in search:", e);
+  }
+
+  dd.innerHTML = html;
   dd.classList.remove('hidden');
 }
 
@@ -316,6 +346,12 @@ function openModal(id, type) {
   localStorage.setItem('bka_nav_type', type || 'movie');
   window.location.href = `movie.html?id=${id}&type=${type || 'movie'}`;
 }
+
+window.openPersonProfile = function(id) {
+  if (!id) return;
+  localStorage.setItem('bka_last_person_id', id);
+  window.location.href = `person.html?id=${id}`;
+};
 
 async function loadMoviePage(id, type) {
   modalMovieId = id; modalMediaType = type || 'movie';
@@ -465,15 +501,34 @@ function renderModal(d, credits, prov) {
       <div class="score-card omdb-skeleton"><div class="sc-val" style="font-size:.8rem;color:var(--text2)">🍅 Loading…</div><div class="sc-label">Rotten Tomatoes</div></div>
     </div>
   </div>`;
+  // Director
+  const directors = (credits.crew || []).filter(c => c.job === 'Director');
+  if (directors.length) {
+    let dirHtml = '';
+    directors.forEach(c => {
+      const p = c.profile_path ? IMG + 'w185' + c.profile_path : 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2270%22 height=%2270%22><rect fill=%22%231a1a3e%22 width=%2270%22 height=%2270%22/><text x=%2235%22 y=%2240%22 text-anchor=%22middle%22 fill=%22%23666%22 font-size=%2220%22>👤</text></svg>';
+      dirHtml += `<a href="person.html?id=${c.id}" class="cast-card" onclick="localStorage.setItem('bka_last_person_id', '${c.id}')">
+        <img src="${p}" alt="${c.name}"/>
+        <div class="cc-name">${c.name}</div>
+        <div class="cc-char">Director</div>
+      </a>`;
+    });
+    html += `<div class="mb-section"><h3>🎬 Director</h3><div class="cast-scroll">${dirHtml}</div></div>`;
+  }
+
   // Cast
   const cast = (credits.cast || []).slice(0, 12);
   if (cast.length) {
-    html += `<div class="mb-section"><h3>🎭 Cast</h3><div class="cast-scroll">${cast.map(c => `
-      <div class="cast-card">
-        <img src="${c.profile_path ? IMG + 'w185' + c.profile_path : 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2270%22 height=%2270%22><rect fill=%22%231a1a3e%22 width=%2270%22 height=%2270%22/><text x=%2235%22 y=%2240%22 text-anchor=%22middle%22 fill=%22%23666%22 font-size=%2220%22>👤</text></svg>'}" alt="${c.name}"/>
+    let castHtml = '';
+    cast.forEach(c => {
+      const p = c.profile_path ? IMG + 'w185' + c.profile_path : 'data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 width=%2270%22 height=%2270%22><rect fill=%22%231a1a3e%22 width=%2270%22 height=%2270%22/><text x=%2235%22 y=%2240%22 text-anchor=%22middle%22 fill=%22%23666%22 font-size=%2220%22>👤</text></svg>';
+      castHtml += `<a href="person.html?id=${c.id}" class="cast-card" onclick="localStorage.setItem('bka_last_person_id', '${c.id}')">
+        <img src="${p}" alt="${c.name}"/>
         <div class="cc-name">${c.name}</div>
         <div class="cc-char">${c.character || ''}</div>
-      </div>`).join('')}</div></div>`;
+      </a>`;
+    });
+    html += `<div class="mb-section"><h3>🎭 Cast</h3><div class="cast-scroll">${castHtml}</div></div>`;
   }
   // Providers
   const inProv = prov.results?.IN || prov.results?.US;
@@ -913,7 +968,17 @@ async function submitReview() {
   
   const text = document.getElementById('reviewText').value.trim();
   const r = RATINGS.find(r => r.val === selectedRating);
-  const reviewData = { val: r.val, label: r.label, emoji: r.emoji, text, date: new Date().toLocaleDateString('en-IN') };
+  
+  const reviewData = { 
+    val: r.val, 
+    label: r.label, 
+    emoji: r.emoji, 
+    text, 
+    date: new Date().toLocaleDateString('en-IN'),
+    movieTitle: window.currentMovieData ? window.currentMovieData.title : 'Unknown Movie',
+    moviePoster: window.currentMovieData ? window.currentMovieData.poster : '',
+    mediaType: window.currentMovieData ? window.currentMovieData.mediaType : 'movie'
+  };
   
   const btn = document.querySelector('.submit-review');
   btn.innerHTML = 'Submitting...';
@@ -967,24 +1032,112 @@ async function loadAndRenderCloudReviews(id) {
   });
   distHtml += '</div>';
 
-  const reviewsHtml = '<div class="past-reviews">' + reviews.map(r => `
+  const user = window.getCurrentUser ? window.getCurrentUser() : null;
+  const currentUid = user ? user.uid : null;
+
+  const reviewsHtml = '<div class="past-reviews">' + reviews.map(r => {
+    // For backward compatibility if any old reviews don't have id
+    const rId = r.id || `${r.movieId}_${r.uid}`;
+    const likes = r.likes || [];
+    const hasLiked = currentUid && likes.includes(currentUid);
+    const likeCount = likes.length;
+    
+    const comments = r.comments || [];
+    const avatar = r.photoURL ? `<img src="${r.photoURL}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : r.username.charAt(0).toUpperCase();
+
+    let commentsHtml = '';
+    if (comments.length > 0) {
+      commentsHtml = `<div style="margin-top:12px; padding-top:12px; border-top:1px solid rgba(255,255,255,0.1);">` +
+        comments.map(c => `
+          <div style="display:flex; gap:10px; margin-bottom:8px; font-size:0.85rem;">
+            <div style="width:24px;height:24px;background:var(--primary);color:#fff;border-radius:50%;display:flex;align-items:center;justify-content:center;font-weight:bold;font-size:0.7rem;flex-shrink:0;cursor:pointer;" onclick="window.location.href='profile.html?uid=${c.uid}'">
+              ${c.photoURL ? `<img src="${c.photoURL}" style="width:100%;height:100%;border-radius:50%;object-fit:cover;">` : c.username.charAt(0).toUpperCase()}
+            </div>
+            <div>
+              <span style="font-weight:bold;cursor:pointer;" onclick="window.location.href='profile.html?uid=${c.uid}'">${c.username}</span>
+              <span style="color:#ddd; margin-left:5px;">${c.text}</span>
+            </div>
+          </div>
+        `).join('') + `</div>`;
+    }
+
+    return `
     <div class="review-card" style="margin-bottom: 15px; padding: 15px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px;">
       <div class="rc-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
         <div style="display: flex; align-items: center; gap: 10px;">
-          <div style="width:30px; height:30px; background: var(--primary); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem;">
-            ${r.username.charAt(0).toUpperCase()}
+          <div style="width:30px; height:30px; background: var(--primary); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem; cursor: pointer; overflow:hidden;" onclick="window.location.href='profile.html?uid=${r.uid}'">
+            ${avatar}
           </div>
-          <span style="font-weight: 600;">${r.username}</span>
+          <span style="font-weight: 600; cursor: pointer;" onclick="window.location.href='profile.html?uid=${r.uid}'">${r.username}</span>
           <span style="color:${RATINGS.find(x => x.val === r.val)?.color || '#fff'}; font-size: 0.9rem;">${r.emoji} ${r.label}</span>
         </div>
         <span style="color: var(--text-muted); font-size: 0.8rem;">${r.date}</span>
       </div>
-      ${r.text ? `<p style="margin: 0; color: #ddd; font-size: 0.9rem; line-height: 1.5;">${r.text}</p>` : ''}
+      ${r.text ? `<p style="margin: 0 0 12px 0; color: #ddd; font-size: 0.9rem; line-height: 1.5;">${r.text}</p>` : ''}
+      
+      <div style="display:flex; gap:15px; align-items:center; font-size:0.85rem; color:var(--text-muted);">
+        <button onclick="handleToggleLike('${rId}')" style="background:none; border:none; color:inherit; cursor:pointer; display:flex; align-items:center; gap:5px; padding:0; ${hasLiked ? 'color:var(--gold);' : ''}">
+          ${hasLiked ? '❤️' : '🤍'} ${likeCount}
+        </button>
+        <button onclick="document.getElementById('comment-box-${rId}').classList.toggle('hidden')" style="background:none; border:none; color:inherit; cursor:pointer; display:flex; align-items:center; gap:5px; padding:0;">
+          💬 ${comments.length}
+        </button>
+      </div>
+
+      <div id="comment-box-${rId}" class="hidden" style="margin-top:10px; display:flex; gap:8px;">
+        <input type="text" id="comment-input-${rId}" placeholder="Write a comment..." style="flex:1; padding:8px 12px; border-radius:20px; border:1px solid var(--border); background:rgba(255,255,255,0.05); color:#fff; font-size:0.85rem;">
+        <button onclick="handleAddComment('${rId}')" style="background:var(--primary); color:#fff; border:none; border-radius:20px; padding:0 15px; font-weight:bold; cursor:pointer; font-size:0.85rem;">Post</button>
+      </div>
+
+      ${commentsHtml}
     </div>
-  `).join('') + '</div>';
+  `;
+  }).join('') + '</div>';
 
   container.innerHTML = distHtml + reviewsHtml;
 }
+
+window.handleToggleLike = async function(reviewId) {
+  if (!window.getCurrentUser || !window.getCurrentUser()) {
+    showNotif('Pehle Sign In karo! 🔐');
+    return;
+  }
+  const success = await window.toggleLikeReview(reviewId);
+  if (success) {
+    if (typeof loadAndRenderCloudReviews === 'function' && window.modalMovieId) {
+      loadAndRenderCloudReviews(window.modalMovieId);
+    } else if (typeof loadProfileReviews === 'function') {
+      loadProfileReviews(); // Support for profile.html re-rendering
+    }
+  }
+};
+
+window.handleAddComment = async function(reviewId) {
+  if (!window.getCurrentUser || !window.getCurrentUser()) {
+    showNotif('Pehle Sign In karo! 🔐');
+    return;
+  }
+  const input = document.getElementById(`comment-input-${reviewId}`);
+  const text = input.value.trim();
+  if (!text) return;
+
+  const btn = input.nextElementSibling;
+  btn.disabled = true;
+  btn.innerHTML = '...';
+
+  const success = await window.addCommentToReview(reviewId, text);
+  if (success) {
+    if (typeof loadAndRenderCloudReviews === 'function' && window.modalMovieId) {
+      loadAndRenderCloudReviews(window.modalMovieId);
+    } else if (typeof loadProfileReviews === 'function') {
+      loadProfileReviews(); // Support for profile.html re-rendering
+    }
+  } else {
+    showNotif('Error posting comment.');
+    btn.disabled = false;
+    btn.innerHTML = 'Post';
+  }
+};
 
 async function refreshGrid() {
   currentPage = 1;
@@ -1121,12 +1274,114 @@ async function findSimilarMovies() {
   }
 }
 
+/* ===== PERSON PAGE LOGIC ===== */
+async function loadPersonPage() {
+  const urlParams = new URLSearchParams(window.location.search);
+  const id = urlParams.get('id') || localStorage.getItem('bka_last_person_id');
+  if (!id) {
+    const container = document.getElementById('personContainer');
+    if (container) {
+      container.innerHTML = `
+        <div style="padding:100px 20px; text-align:center;">
+          <h2 style="color:var(--gold); margin-bottom:20px;">No Person Selected</h2>
+          <p style="color:var(--text2); margin-bottom:10px;">Please select an actor or director from a movie details page to view their profile.</p>
+          <p style="color:var(--text2); font-size: 0.8rem; margin-bottom:30px;">Debug Info: URL Search Params: "${window.location.search}"</p>
+          <button class="btn-primary" onclick="window.location.href='index.html'">Go to Home</button>
+        </div>
+      `;
+    }
+    return;
+  }
+
+  console.log("Loading person:", id);
+  try {
+    const [person, credits] = await Promise.all([
+      tmdb(`/person/${id}`),
+      tmdb(`/person/${id}/combined_credits`)
+    ]);
+
+    if (!person || person.status_code) {
+      throw new Error(person.status_message || "Person not found");
+    }
+
+    renderPersonPage(person, credits);
+  } catch (err) {
+    console.error("Error loading person page:", err);
+    const container = document.getElementById('personContainer');
+    if (container) container.innerHTML = `<h2 style="padding:40px;text-align:center">Error: ${err.message || 'Something went wrong'}</h2>`;
+  }
+}
+
+function renderPersonPage(p, c) {
+  const container = document.getElementById('personContainer');
+  if (!container) return;
+
+  const profile = p.profile_path ? `${IMG}h632${p.profile_path}` : '';
+  const birthday = p.birthday ? new Date(p.birthday).toLocaleDateString('en-IN', { year: 'numeric', month: 'long', day: 'numeric' }) : '';
+  const place = p.place_of_birth || '';
+
+  // Filter and sort credits
+  const cast = (c && c.cast) ? c.cast : [];
+  const crew = (c && c.crew) ? c.crew : [];
+  
+  const allCredits = [...cast, ...crew]
+    .filter(m => m && m.poster_path)
+    .filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i) // Unique
+    .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
+
+  container.innerHTML = `
+    <div class="person-header">
+      <div class="person-profile">
+        ${profile ? `<img src="${profile}" alt="${p.name}"/>` : '<div class="profile-placeholder">👤</div>'}
+      </div>
+      <div class="person-info">
+        <h1>${p.name}</h1>
+        <div class="person-meta">
+          ${birthday ? `<span>📅 Born: ${birthday}</span>` : ''}
+          ${place ? `<span>📍 ${place}</span>` : ''}
+        </div>
+        <p class="person-bio">${p.biography || 'No biography available.'}</p>
+      </div>
+    </div>
+    
+    <div class="person-projects">
+      <h2 class="section-title">🎬 Known <span>For</span></h2>
+      <div class="movies-grid">
+        ${allCredits.slice(0, 24).map(m => {
+          const title = m.title || m.name || 'Untitled';
+          const year = (m.release_date || m.first_air_date || '').slice(0, 4);
+          const role = m.character || m.job || (m.media_type === 'tv' ? 'Series' : 'Movie');
+          
+          return `
+          <div class="movie-card" onclick="openModal(${m.id}, '${m.media_type}')">
+            <div class="card-poster">
+              <img src="${IMG}w342${m.poster_path}" alt="${title}"/>
+              <div class="card-overlay">
+                <div class="co-title">${title}</div>
+                <div class="co-meta">${year}</div>
+              </div>
+            </div>
+            <div class="card-info">
+              <h3>${title}</h3>
+              <div class="ci-row">
+                <span>⭐ ${m.vote_average ? m.vote_average.toFixed(1) : '—'}</span>
+                <span>${role}</span>
+              </div>
+            </div>
+          </div>`;
+        }).join('')}
+      </div>
+    </div>
+  `;
+}
+
 /* ===== UTILS ===== */
 function goHome() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
 function scrollToMovies() { document.getElementById('moviesSection').scrollIntoView({ behavior: 'smooth' }); }
 function scrollToAI() { document.getElementById('aiSuggestions').scrollIntoView({ behavior: 'smooth' }); }
 function showNotif(msg) {
   const n = document.getElementById('notification');
+  if (!n) return;
   n.textContent = msg; n.classList.remove('hidden');
   setTimeout(() => n.classList.add('hidden'), 2500);
 }

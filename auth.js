@@ -10,6 +10,7 @@ auth.onAuthStateChanged(async (user) => {
         promptForUsername();
       } else {
         currentUser.customUsername = profile.username;
+        currentUser.customPhoto = profile.photoURL || null;
       }
     }
     updateAuthUI(user);
@@ -108,15 +109,37 @@ window.getCurrentUser = function() {
 
 window.updateAuthUI = function(user) {
   const authBtn = document.getElementById('authBtn');
+  let profileBtn = document.getElementById('profileBtn');
+  
   if (!authBtn) return;
   
   if (user) {
-    const displayName = user.customUsername || user.displayName.split(' ')[0];
-    authBtn.innerHTML = `👤 ${displayName}`;
+    const displayName = user.customUsername || (user.displayName ? user.displayName.split(' ')[0] : 'User');
+    const finalPhoto = user.customPhoto || user.photoURL;
+    const avatarImg = finalPhoto 
+        ? `<img src="${finalPhoto}" style="width:24px;height:24px;border-radius:50%;object-fit:cover;vertical-align:middle;margin-right:8px;border:1px solid var(--border);">`
+        : `<span style="font-size:1.1rem;vertical-align:middle;margin-right:5px;">👤</span>`;
+
+    if (!profileBtn) {
+      profileBtn = document.createElement('button');
+      profileBtn.id = 'profileBtn';
+      profileBtn.className = 'nav-btn';
+      profileBtn.style.display = 'inline-flex';
+      profileBtn.style.alignItems = 'center';
+      profileBtn.onclick = () => { window.location.href = 'profile.html'; };
+      authBtn.parentNode.insertBefore(profileBtn, authBtn);
+    } else {
+      profileBtn.style.display = 'inline-flex';
+    }
+    
+    profileBtn.innerHTML = `${avatarImg} <span>${displayName}</span>`;
+
+    authBtn.innerHTML = `🚪 Logout`;
     authBtn.onclick = () => {
       if(confirm('Do you want to log out?')) window.logoutUser();
     };
   } else {
+    if (profileBtn) profileBtn.style.display = 'none';
     authBtn.innerHTML = `🔐 Sign In`;
     authBtn.onclick = window.loginUser;
   }

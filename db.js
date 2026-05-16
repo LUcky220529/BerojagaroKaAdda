@@ -99,18 +99,34 @@ window.submitCloudReview = async function(movieId, reviewData) {
   if (!profile || !profile.username) return false;
 
   try {
-    // Add review to movies/{movieId}/reviews/{uid}
-    // Using user's UID as doc ID prevents multiple reviews from same user, or use auto-id for multiple.
-    // Let's use user.uid so users can only have ONE review per movie (they can update it)
-    await db.collection('movies').doc(movieId.toString()).collection('reviews').doc(user.uid).set({
+    const reviewId = `${movieId}_${user.uid}`;
+    
+    // Check if review exists to keep likes/comments
+    const existingSnap = await db.collection('reviews').doc(reviewId).get();
+    let likes = [];
+    let comments = [];
+    if (existingSnap.exists) {
+        likes = existingSnap.data().likes || [];
+        comments = existingSnap.data().comments || [];
+    }
+
+    await db.collection('reviews').doc(reviewId).set({
+      id: reviewId,
+      movieId: movieId.toString(),
       uid: user.uid,
       username: profile.username,
+      photoURL: profile.photoURL || user.photoURL || '',
+      movieTitle: reviewData.movieTitle || 'Unknown Movie',
+      moviePoster: reviewData.moviePoster || '',
+      mediaType: reviewData.mediaType || 'movie',
       val: reviewData.val,
       label: reviewData.label,
       emoji: reviewData.emoji,
       text: reviewData.text,
       date: reviewData.date,
-      timestamp: Date.now()
+      timestamp: Date.now(),
+      likes: likes,
+      comments: comments
     });
     return true;
   } catch (e) {
@@ -122,12 +138,106 @@ window.submitCloudReview = async function(movieId, reviewData) {
 window.loadCloudReviews = async function(movieId) {
   if (!db) return [];
   try {
-    const snapshot = await db.collection('movies').doc(movieId.toString()).collection('reviews').orderBy('timestamp', 'desc').get();
+    const snapshot = await db.collection('reviews')
+        .where('movieId', '==', movieId.toString())
+        .get();
+        
     const reviews = [];
     snapshot.forEach(doc => reviews.push(doc.data()));
-    return reviews;
+    // Since where query with orderBy requires index, we sort manually
+    return reviews.sort((a, b) => b.timestamp - a.timestamp);
   } catch (e) {
     console.error("Error loading reviews:", e);
     return [];
   }
 };
+
+window.getUserReviews = async function(uid) {
+  if (!db) return [];
+  try {
+    const snapshot = await db.collection('reviews')
+        .where('uid', '==', uid)
+        .get();
+        
+    const reviews = [];
+    snapshot.forEach(doc => reviews.push(doc.data()));
+    return reviews.sort((a, b) => b.timestamp - a.timestamp);
+  } catch (e) {
+    console.error("Error loading user reviews:", e);
+    return [];
+  }
+};
+
+window.toggleLikeReview = async function(reviewId) {
+  const user = window.getCurrentUser ? window.getCurrentUser() : null;
+  if (!db || !user) return false;
+
+  try {
+    const ref = db.collection('reviews').doc(reviewId);
+    const doc = await ref.get();
+    if (!doc.exists) return false;
+
+    const likes = doc.data().likes || [];
+    if (likes.includes(user.uid)) {
+      await ref.update({ likes: firebase.firestore.FieldValue.arrayRemove(user.uid) });
+    } else {
+      await ref.update({ likes: firebase.firestore.FieldValue.arrayUnion(user.uid) });
+    }
+    return true;
+  } catch (e) {
+    console.error("Error toggling like:", e);
+    return false;
+  }
+};
+
+window.addCommentToReview = async function(reviewId, text) {
+  const user = window.getCurrentUser ? window.getCurrentUser() : null;
+  if (!db || !user) return false;
+  
+  const profile = await window.getUserProfile();
+  if (!profile || !profile.username) return false;
+
+  try {
+    const newComment = {
+      uid: user.uid,
+      username: profile.username,
+      photoURL: profile.photoURL || user.photoURL || '',
+      text: text,
+      timestamp: Date.now()
+    };
+    await db.collection('reviews').doc(reviewId).update({
+      comments: firebase.firestore.FieldValue.arrayUnion(newComment)
+    });
+    return true;
+  } catch (e) {
+    console.error("Error adding comment:", e);
+    return false;
+  }
+};
+
+window.updateProfilePhoto = async function(photoUrl) {
+  const user = window.getCurrentUser ? window.getCurrentUser() : null;
+  if (!db || !user) return false;
+  
+  try {
+    await db.collection('users').doc(user.uid).update({ photoURL: photoUrl });
+    user.customPhoto = photoUrl;
+    if (window.updateAuthUI) window.updateAuthUI(user);
+    return true;
+  } catch (e) {
+    console.error("Error updating photo:", e);
+    return false;
+  }
+};
+
+window.getPublicProfile = async function(uid) {
+  if (!db) return null;
+  try {
+    const doc = await db.collection('users').doc(uid).get();
+    return doc.exists ? doc.data() : null;
+  } catch (e) {
+    console.error("Error fetching public profile:", e);
+    return null;
+  }
+};
+
