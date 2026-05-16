@@ -1333,6 +1333,9 @@ function renderPersonPage(p, c) {
     .filter((v, i, a) => a.findIndex(t => (t.id === v.id)) === i) // Unique
     .sort((a, b) => (b.popularity || 0) - (a.popularity || 0));
 
+  window.allPersonCredits = allCredits;
+  window.personOffset = 24;
+
   container.innerHTML = `
     <div class="person-header">
       <div class="person-profile">
@@ -1350,34 +1353,55 @@ function renderPersonPage(p, c) {
     
     <div class="person-projects">
       <h2 class="section-title">🎬 Known <span>For</span></h2>
-      <div class="movies-grid">
-        ${allCredits.slice(0, 24).map(m => {
-          const title = m.title || m.name || 'Untitled';
-          const year = (m.release_date || m.first_air_date || '').slice(0, 4);
-          const role = m.character || m.job || (m.media_type === 'tv' ? 'Series' : 'Movie');
-          
-          return `
-          <div class="movie-card" onclick="openModal(${m.id}, '${m.media_type}')">
-            <div class="card-poster">
-              <img src="${IMG}w342${m.poster_path}" alt="${title}"/>
-              <div class="card-overlay">
-                <div class="co-title">${title}</div>
-                <div class="co-meta">${year}</div>
-              </div>
-            </div>
-            <div class="card-info">
-              <h3>${title}</h3>
-              <div class="ci-row">
-                <span>⭐ ${m.vote_average ? m.vote_average.toFixed(1) : '—'}</span>
-                <span>${role}</span>
-              </div>
-            </div>
-          </div>`;
-        }).join('')}
+      <div class="movies-grid" id="personProjectsGrid">
+        ${allCredits.slice(0, 24).map(m => renderPersonMovieCard(m)).join('')}
       </div>
+      ${allCredits.length > 24 ? `
+        <div style="text-align:center; margin-top:40px;">
+          <button class="btn-ghost" id="loadMoreBtn" onclick="loadMorePersonCredits()" style="padding:12px 40px; border-radius:30px; border:1px solid var(--border); font-weight:600;">Load More Projects</button>
+        </div>
+      ` : ''}
     </div>
   `;
 }
+
+function renderPersonMovieCard(m) {
+  const title = m.title || m.name || 'Untitled';
+  const year = (m.release_date || m.first_air_date || '').slice(0, 4);
+  const role = m.character || m.job || (m.media_type === 'tv' ? 'Series' : 'Movie');
+  
+  return `
+  <div class="movie-card" onclick="openModal(${m.id}, '${m.media_type}')">
+    <div class="card-poster">
+      <img src="${IMG}w342${m.poster_path}" alt="${title}"/>
+      <div class="card-overlay">
+        <div class="co-title">${title}</div>
+        <div class="co-meta">${year}</div>
+      </div>
+    </div>
+    <div class="card-info">
+      <h3>${title}</h3>
+      <div class="ci-row">
+        <span>⭐ ${m.vote_average ? m.vote_average.toFixed(1) : '—'}</span>
+        <span>${role}</span>
+      </div>
+    </div>
+  </div>`;
+}
+
+window.loadMorePersonCredits = function() {
+  const grid = document.getElementById('personProjectsGrid');
+  const btn = document.getElementById('loadMoreBtn');
+  if (!grid || !window.allPersonCredits) return;
+
+  const nextBatch = window.allPersonCredits.slice(window.personOffset, window.personOffset + 24);
+  grid.insertAdjacentHTML('beforeend', nextBatch.map(m => renderPersonMovieCard(m)).join(''));
+  
+  window.personOffset += 24;
+  if (window.personOffset >= window.allPersonCredits.length && btn) {
+    btn.parentElement.style.display = 'none';
+  }
+};
 
 /* ===== UTILS ===== */
 function goHome() { window.scrollTo({ top: 0, behavior: 'smooth' }); }
