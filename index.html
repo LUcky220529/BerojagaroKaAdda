@@ -25,6 +25,7 @@
   <div class="nav-right">
     <button class="nav-btn" onclick="scrollToAI()">✨ Similar Finder</button>
     <button class="nav-btn" onclick="scrollToMovies()">🎬 Browse</button>
+    <button class="nav-btn" id="authBtn" onclick="window.loginUser && window.loginUser()">🔐 Sign In</button>
   </div>
 </nav>
 
@@ -46,6 +47,16 @@
     </div>
   </div>
   <div class="hero-dots" id="heroDots"></div>
+</section>
+
+<!-- ===== CONTINUE WATCHING ===== -->
+<section class="cinema-section hidden" id="continueWatchingSection" style="padding: 20px 40px; margin-top: 20px;">
+  <div class="cinema-section-header">
+    <h2 class="cinema-section-title">
+      <span style="font-size: 1.5rem">▶️</span> Continue Watching
+    </h2>
+  </div>
+  <div class="cinema-scroll" id="continueWatchingScroll"></div>
 </section>
 
 <!-- ===== GENRE PILLS ===== -->
@@ -135,18 +146,20 @@
   </section>
 </main>
 
-<!-- ===== MOVIE MODAL ===== -->
-<div class="modal-overlay hidden" id="modalOverlay" onclick="closeModalOnOverlay(event)">
-  <div class="modal" id="modal">
-    <button class="modal-close" onclick="closeModal()">✕</button>
-    <div class="modal-hero" id="modalHero"></div>
-    <div class="modal-body" id="modalBody"></div>
-  </div>
-</div>
+
 
 <!-- ===== NOTIFICATION ===== -->
 <div class="notification hidden" id="notification"></div>
 
+<!-- Firebase SDKs -->
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-app-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-auth-compat.js"></script>
+<script src="https://www.gstatic.com/firebasejs/10.8.1/firebase-firestore-compat.js"></script>
+
+<!-- App Logic -->
+<script src="firebase-config.js"></script>
+<script src="db.js"></script>
+<script src="auth.js"></script>
 <script src="app.js"></script>
 </body>
 </html>

@@ -24,7 +24,22 @@ async function init() {
   createParticles();
   setupNavScroll();
   setupSearch();
-  await loadAll();
+
+  const params = new URLSearchParams(window.location.search);
+  const movieId = params.get('id') || localStorage.getItem('bka_nav_id');
+  const type = params.get('type') || localStorage.getItem('bka_nav_type') || 'movie';
+
+  // If the movie page specific element exists, we are on movie.html
+  if (document.getElementById('modalHero')) {
+    if (movieId) {
+      await loadMoviePage(movieId, type);
+    } else {
+      document.getElementById('modalHero').innerHTML = '<h2 style="padding:40px;text-align:center">Movie not found. Please go back to the homepage.</h2>';
+    }
+  } else if (document.getElementById('moviesGrid')) {
+    // Otherwise we are on the homepage
+    await loadAll();
+  }
 }
 
 async function loadAll() {
@@ -43,7 +58,7 @@ function createParticles() {
     const p = document.createElement('div');
     p.className = 'particle';
     const s = Math.random() * 4 + 2;
-    p.style.cssText = `width:${s}px;height:${s}px;left:${Math.random()*100}%;animation-duration:${Math.random()*15+10}s;animation-delay:${Math.random()*10}s;`;
+    p.style.cssText = `width:${s}px;height:${s}px;left:${Math.random() * 100}%;animation-duration:${Math.random() * 15 + 10}s;animation-delay:${Math.random() * 10}s;`;
     c.appendChild(p);
   }
 }
@@ -113,7 +128,7 @@ async function loadTrending() {
       tmdb('/trending/all/week', { page: 1 }),
       tmdb('/discover/movie', { with_original_language: 'hi|te|ml|ta|kn', sort_by: 'popularity.desc', 'vote_count.gte': 30 })
     ]);
-    
+
     const combined = [...(globalData.results || []).slice(0, 12), ...(indianData.results || []).slice(0, 8)];
     // Shuffle combined results
     const shuffled = combined.sort(() => Math.random() - 0.5);
@@ -153,7 +168,6 @@ function renderGrid(items, append) {
     const title = item.title || item.name || 'Unknown';
     const year = (item.release_date || item.first_air_date || '').slice(0, 4);
     const vote = item.vote_average ? item.vote_average.toFixed(1) : '—';
-    const review = getUserRating(item.id);
     const card = document.createElement('div');
     card.className = 'movie-card animate-card';
     card.style.animationDelay = `${i * .06}s`;
@@ -162,7 +176,6 @@ function renderGrid(items, append) {
       <div class="card-poster">
         <img src="${IMG}w342${item.poster_path}" alt="${title}" loading="lazy"/>
         <span class="card-badge tmdb">⭐ ${vote}</span>
-        ${review ? `<span class="card-rating-badge">${review.emoji}</span>` : ''}
         <div class="card-overlay">
           <div class="co-title">${title}</div>
           <div class="co-meta">${year} • ${type === 'tv' ? 'Series' : 'Movie'}</div>
@@ -183,11 +196,11 @@ async function loadHero() {
     tmdb('/trending/movie/day'),
     tmdb('/discover/movie', { with_original_language: 'hi|te|ml|ta|kn', sort_by: 'popularity.desc' })
   ]);
-  
+
   // Combine and shuffle slightly to mix them
   const combined = [...(trending.results || []).slice(0, 5), ...(indian.results || []).slice(0, 5)];
   heroMovies = combined.filter(m => m.backdrop_path).sort(() => Math.random() - 0.5).slice(0, 8);
-  
+
   if (!heroMovies.length) return;
   renderHero(0);
   renderHeroDots();
@@ -255,7 +268,7 @@ function searchItemHTML(item) {
   const type = item.media_type === 'tv' ? 'Series' : 'Movie';
   return `<div class="search-item" onclick="openModal(${item.id},'${item.media_type}')">
     <img src="${IMG}w92${item.poster_path}" alt="${title}"/>
-    <div class="search-item-info"><h4>${title}</h4><p>${year} • ${type} • ⭐ ${(item.vote_average||0).toFixed(1)}</p></div>
+    <div class="search-item-info"><h4>${title}</h4><p>${year} • ${type} • ⭐ ${(item.vote_average || 0).toFixed(1)}</p></div>
   </div>`;
 }
 
@@ -268,64 +281,88 @@ async function fetchOmdbRatings(imdbId) {
     if (!res.ok) return null;
     const data = await res.json();
     if (data.Response === 'False') return null;
-    const imdbRating  = data.imdbRating !== 'N/A' ? data.imdbRating : null;
-    const imdbVotes   = data.imdbVotes  !== 'N/A' ? data.imdbVotes  : null;
-    const metascore   = data.Metascore  !== 'N/A' ? data.Metascore  : null;
-    const rtRating    = (data.Ratings || []).find(r => r.Source === 'Rotten Tomatoes');
-    const rtScore     = rtRating ? rtRating.Value : null; // e.g. "94%"
+    const imdbRating = data.imdbRating !== 'N/A' ? data.imdbRating : null;
+    const imdbVotes = data.imdbVotes !== 'N/A' ? data.imdbVotes : null;
+    const metascore = data.Metascore !== 'N/A' ? data.Metascore : null;
+    const rtRating = (data.Ratings || []).find(r => r.Source === 'Rotten Tomatoes');
+    const rtScore = rtRating ? rtRating.Value : null; // e.g. "94%"
     return { imdbRating, imdbVotes, metascore, rtScore };
   } catch (e) { return null; }
 }
 
-/* ===== MODAL ===== */
-async function openModal(id, type) {
+/* ===== PAGE ROUTING ===== */
+function openModal(id, type) {
+  localStorage.setItem('bka_nav_id', id);
+  localStorage.setItem('bka_nav_type', type || 'movie');
+  window.location.href = `movie.html?id=${id}&type=${type || 'movie'}`;
+}
+
+async function loadMoviePage(id, type) {
   modalMovieId = id; modalMediaType = type || 'movie';
-  document.getElementById('searchDropdown').classList.add('hidden');
-  const [detail, credits, providers] = await Promise.all([
-    tmdb(`/${type}/${id}`, { append_to_response: 'external_ids' }),
-    tmdb(`/${type}/${id}/credits`),
-    tmdb(`/${type}/${id}/watch/providers`)
-  ]);
-  renderModal(detail, credits, providers);
-  document.getElementById('modalOverlay').classList.remove('hidden');
-  document.body.style.overflow = 'hidden';
-  // Fetch real IMDb + RT ratings async (non-blocking)
-  const imdbId = detail.external_ids?.imdb_id || detail.imdb_id || '';
-  if (imdbId) {
-    fetchOmdbRatings(imdbId).then(omdb => {
-      if (omdb) injectOmdbRatings(omdb, imdbId);
-    });
+  const dd = document.getElementById('searchDropdown');
+  if (dd) dd.classList.add('hidden');
+
+  try {
+    const [detail, credits, providers] = await Promise.all([
+      tmdb(`/${type}/${id}`, { append_to_response: 'external_ids' }),
+      tmdb(`/${type}/${id}/credits`),
+      tmdb(`/${type}/${id}/watch/providers`)
+    ]);
+
+    renderModal(detail, credits, providers);
+
+    // Fetch real IMDb + RT ratings async (non-blocking)
+    const imdbId = detail.external_ids?.imdb_id || detail.imdb_id || '';
+    if (imdbId) {
+      fetchOmdbRatings(imdbId).then(omdb => {
+        if (omdb) injectOmdbRatings(omdb, imdbId, detail.vote_average);
+      });
+    }
+
+    document.title = (detail.title || detail.name || 'Movie') + ' - BerojgaroKaAdda';
+    window.scrollTo(0, 0);
+  } catch (error) {
+    console.error('Error loading movie:', error);
+    const mb = document.getElementById('modalBody');
+    if (mb) mb.innerHTML = '<div style="padding:40px;text-align:center;">Failed to load movie details.</div>';
   }
 }
 
-function injectOmdbRatings(omdb, imdbId) {
+function injectOmdbRatings(omdb, imdbId, tmdbVote) {
   const box = document.getElementById('omdbRatingsBox');
   if (!box) return;
   let html = '';
-  if (omdb.imdbRating) {
-    html += `<div class="score-card omdb-card" title="${omdb.imdbVotes ? omdb.imdbVotes + ' votes' : 'IMDb Rating'}">
-      <div class="sc-val omdb-imdb">⭐ ${omdb.imdbRating}</div>
-      <div class="sc-label">IMDb Rating</div>
-      ${omdb.imdbVotes ? `<div class="sc-sublabel">${omdb.imdbVotes} votes</div>` : ''}
-    </div>`;
-  }
+
+  // 1. Tomatometer (Critics)
   if (omdb.rtScore) {
     const pct = parseInt(omdb.rtScore);
     const fresh = pct >= 60;
-    html += `<div class="score-card omdb-card" title="Rotten Tomatoes: ${omdb.rtScore}">
+    html += `<div class="score-card omdb-card" title="Rotten Tomatoes Tomatometer: ${omdb.rtScore}">
       <div class="sc-val omdb-rt">${fresh ? '🍅' : '🤢'} ${omdb.rtScore}</div>
-      <div class="sc-label">Rotten Tomatoes</div>
-      <div class="sc-sublabel">${fresh ? 'Fresh 🟢' : 'Rotten 🔴'}</div>
+      <div class="sc-label">Tomatometer</div>
+      <div class="sc-sublabel">${fresh ? 'Fresh' : 'Rotten'}</div>
+    </div>`;
+  } else {
+    html += `<div class="score-card omdb-card"><div class="sc-val">N/A</div><div class="sc-label">Tomatometer</div></div>`;
+  }
+
+  // 2. Popcorn Meter (Audience)
+  const fanScore = tmdbVote ? Math.round(tmdbVote * 10) + '%' : '—';
+  const fanFresh = tmdbVote >= 6;
+  html += `<div class="score-card omdb-card" title="Audience Score (Popcorn Meter)">
+    <div class="sc-val omdb-fans">${fanFresh ? '🍿' : '💩'} ${fanScore}</div>
+    <div class="sc-label">Popcorn Meter</div>
+    <div class="sc-sublabel">${fanFresh ? 'Fresh' : 'Stale'}</div>
+  </div>`;
+
+  // 3. IMDb Score
+  if (omdb.imdbRating) {
+    html += `<div class="score-card omdb-card" title="IMDb User Rating">
+      <div class="sc-val omdb-imdb">⭐ ${omdb.imdbRating}</div>
+      <div class="sc-label">IMDb Rating</div>
     </div>`;
   }
-  if (omdb.metascore) {
-    const ms = parseInt(omdb.metascore);
-    const msColor = ms >= 61 ? 'green' : ms >= 40 ? 'gold' : 'red';
-    html += `<div class="score-card omdb-card" title="Metacritic Score">
-      <div class="sc-val ${msColor}">${omdb.metascore}</div>
-      <div class="sc-label">Metascore</div>
-    </div>`;
-  }
+
   if (html) {
     box.innerHTML = html;
     box.style.animation = 'fadeIn .5s ease';
@@ -340,6 +377,13 @@ function renderModal(d, credits, prov) {
   const vote = d.vote_average ? d.vote_average.toFixed(1) : '—';
   const imdbId = d.external_ids?.imdb_id || d.imdb_id || '';
   const backdrop = d.backdrop_path ? `${IMG}original${d.backdrop_path}` : '';
+
+  window.currentMovieData = {
+    id: modalMovieId,
+    title: title,
+    poster: d.poster_path ? `${IMG}w342${d.poster_path}` : '',
+    mediaType: modalMediaType
+  };
 
   document.getElementById('modalHero').innerHTML = `
     ${backdrop ? `<img src="${backdrop}" alt="${title}"/>` : '<div style="height:100%;background:var(--card)"></div>'}
@@ -413,7 +457,7 @@ function renderModal(d, credits, prov) {
   }
   // Providers
   const inProv = prov.results?.IN || prov.results?.US;
-  const allProv = [...(inProv?.flatrate||[]), ...(inProv?.rent||[]), ...(inProv?.buy||[])];
+  const allProv = [...(inProv?.flatrate || []), ...(inProv?.rent || []), ...(inProv?.buy || [])];
   const uniqueProv = [...new Map(allProv.map(p => [p.provider_id, p])).values()].slice(0, 8);
   if (uniqueProv.length) {
     html += `<div class="mb-section"><h3>📺 Where to Watch</h3><div class="providers-row">${uniqueProv.map(p => `
@@ -421,14 +465,19 @@ function renderModal(d, credits, prov) {
   }
 
   // Rating
-  const reviews = getReviews(modalMovieId);
   html += `<div class="rating-section"><h3 style="color:var(--gold);margin-bottom:14px">⭐ Rate — Apne Andaaz Mein</h3>
     <div class="rating-options">${RATINGS.map(r => `<button class="rating-btn" data-val="${r.val}" onclick="selectRating(${r.val},this)" style="--rc:${r.color}">${r.emoji} ${r.label}</button>`).join('')}</div>
     <textarea class="review-textarea" id="reviewText" placeholder="Apni raay likho..."></textarea>
     <button class="submit-review" onclick="submitReview()">Submit Review ✨</button>
-    <div class="past-reviews" id="pastReviews">${reviews.map(renderReviewCard).join('')}</div>
+    
+    <!-- Cloud Reviews Container -->
+    <div id="cloudReviewsContainer" style="margin-top: 30px;">
+      <div style="text-align:center; padding: 20px; color: var(--text-muted);">Loading community reviews...</div>
+    </div>
   </div>`;
   document.getElementById('modalBody').innerHTML = html;
+
+  loadAndRenderCloudReviews(modalMovieId);
 
   // If series, auto-load episodes for season 1
   if (modalMediaType === 'tv') loadEpisodes();
@@ -559,7 +608,7 @@ async function fetchItunesFallback(movieName) {
       const songs = (json.results || []).filter(s => s.kind === 'song');
       if (songs.length) { renderItunesSongs(songs, movieName); return; }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   try {
     const res = await fetch(`https://itunes.apple.com/search?term=${encodeURIComponent(movieName + ' soundtrack')}&media=music&entity=song&limit=10`);
@@ -568,7 +617,7 @@ async function fetchItunesFallback(movieName) {
       const songs = (json.results || []).filter(s => s.kind === 'song');
       if (songs.length) { renderItunesSongs(songs, movieName); return; }
     }
-  } catch (e) {}
+  } catch (e) { }
 
   renderSongsFallback(movieName);
 }
@@ -665,9 +714,12 @@ function togglePlayer() {
   const wrap = document.getElementById('playerWrap');
   const iframe = document.getElementById('videoPlayer');
   if (wrap.classList.contains('hidden')) {
-    iframe.src = `https://www.vidking.net/embed/movie/${modalMovieId}`;
+    iframe.src = `https://www.vidking.net/embed/movie/${modalMovieId}?color=e50914&autoPlay=true`;
     wrap.classList.remove('hidden');
     wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    if (window.saveWatchHistory && window.currentMovieData) {
+      window.saveWatchHistory(window.currentMovieData);
+    }
   } else {
     iframe.src = '';
     wrap.classList.add('hidden');
@@ -695,45 +747,52 @@ function playEpisode() {
   iframe.src = `https://www.vidking.net/embed/tv/${modalMovieId}/${season}/${episode}?color=e50914&autoPlay=true&nextEpisode=true&episodeSelector=true`;
   wrap.classList.remove('hidden');
   wrap.scrollIntoView({ behavior: 'smooth', block: 'center' });
+  if (window.saveWatchHistory && window.currentMovieData) {
+    window.saveWatchHistory({
+      ...window.currentMovieData,
+      season: season,
+      episode: episode
+    });
+  }
 }
 
 /* ===== INDIAN CINEMA HUB & GENRE SPOTLIGHT ===== */
 
 async function loadIndianCinema() {
   const today = new Date().toISOString().split('T')[0]; // 2026-05-15
-  
+
   // 1. Bollywood (Hindi) - Popular Recent
-  tmdb('/discover/movie', { 
-    with_original_language: 'hi', 
+  tmdb('/discover/movie', {
+    with_original_language: 'hi',
     region: 'IN',
-    sort_by: 'popularity.desc', 
+    sort_by: 'popularity.desc',
     'primary_release_date.lte': today,
     'vote_count.gte': 5
   }).then(data => renderCinemaScroll('bollywoodScroll', data.results || []));
 
   // 2. Tollywood (Telugu) - Popular Recent
-  tmdb('/discover/movie', { 
-    with_original_language: 'te', 
+  tmdb('/discover/movie', {
+    with_original_language: 'te',
     region: 'IN',
-    sort_by: 'popularity.desc', 
+    sort_by: 'popularity.desc',
     'primary_release_date.lte': today,
     'vote_count.gte': 5
   }).then(data => renderCinemaScroll('tollywoodScroll', data.results || []));
 
   // 3. Mollywood (Malayalam) - Popular Recent
-  tmdb('/discover/movie', { 
-    with_original_language: 'ml', 
+  tmdb('/discover/movie', {
+    with_original_language: 'ml',
     region: 'IN',
-    sort_by: 'popularity.desc', 
+    sort_by: 'popularity.desc',
     'primary_release_date.lte': today,
     'vote_count.gte': 5
   }).then(data => renderCinemaScroll('mollywoodScroll', data.results || []));
 
   // 4. Recent Indian (Latest 2026 releases)
-  tmdb('/discover/movie', { 
-    with_original_language: 'hi|te|ml|ta|kn', 
+  tmdb('/discover/movie', {
+    with_original_language: 'hi|te|ml|ta|kn',
     region: 'IN',
-    sort_by: 'primary_release_date.desc', 
+    sort_by: 'primary_release_date.desc',
     'primary_release_date.lte': today,
     'vote_count.gte': 2
   }).then(data => renderCinemaScroll('recentIndianScroll', (data.results || []).slice(0, 15), true));
@@ -805,7 +864,7 @@ async function filterByLang(lang, label) {
   document.getElementById('sectionTitle').textContent = `🇮🇳 ${label}`;
   document.querySelectorAll('.genre-pill').forEach(p => p.classList.remove('active'));
   document.querySelector('.genre-pill')?.classList.add('active'); // "All" pill
-  
+
   currentPage = 1;
   const data = await tmdb('/discover/movie', { with_original_language: lang, sort_by: 'popularity.desc', page: 1 });
   renderGrid(data.results || [], false);
@@ -818,36 +877,94 @@ function selectRating(val, el) {
   el.classList.add('selected');
 }
 
-function submitReview() {
+async function submitReview() {
+  const user = window.getCurrentUser ? window.getCurrentUser() : null;
+  if (!user) { showNotif('Pehle Sign In karo! 🔐'); return; }
+  
+  if (!user.customUsername) {
+    if (window.promptForUsername) {
+      window.promptForUsername();
+      showNotif('Pick your Adda Name first!');
+    }
+    return;
+  }
+
   if (!selectedRating) { showNotif('Pehle rating select karo! 😤'); return; }
+  
   const text = document.getElementById('reviewText').value.trim();
   const r = RATINGS.find(r => r.val === selectedRating);
-  const review = { val: r.val, label: r.label, emoji: r.emoji, text, date: new Date().toLocaleDateString('en-IN') };
-  const reviews = getReviews(modalMovieId);
-  reviews.unshift(review);
-  localStorage.setItem(`bka_reviews_${modalMovieId}`, JSON.stringify(reviews));
-  document.getElementById('pastReviews').innerHTML = reviews.map(renderReviewCard).join('');
-  document.getElementById('reviewText').value = '';
-  selectedRating = null;
-  document.querySelectorAll('.rating-btn').forEach(b => b.classList.remove('selected'));
-  showNotif(`${r.emoji} Review saved — ${r.label}!`);
-  refreshGrid();
+  const reviewData = { val: r.val, label: r.label, emoji: r.emoji, text, date: new Date().toLocaleDateString('en-IN') };
+  
+  const btn = document.querySelector('.submit-review');
+  btn.innerHTML = 'Submitting...';
+  btn.disabled = true;
+
+  const success = await window.submitCloudReview(modalMovieId, reviewData);
+  if (success) {
+    document.getElementById('reviewText').value = '';
+    selectedRating = null;
+    document.querySelectorAll('.rating-btn').forEach(b => b.classList.remove('selected'));
+    showNotif(`${r.emoji} Review saved — ${r.label}!`);
+    await loadAndRenderCloudReviews(modalMovieId);
+  } else {
+    showNotif('Error submitting review. Please try again.');
+  }
+  
+  btn.innerHTML = 'Submit Review ✨';
+  btn.disabled = false;
 }
 
-function renderReviewCard(r, i) {
-  return `<div class="review-card"><div class="rc-top"><span class="rc-rating" style="color:${RATINGS.find(x=>x.val===r.val)?.color||'#fff'}">${r.emoji} ${r.label}</span><span class="rc-date">${r.date}</span></div>${r.text ? `<p class="rc-text">${r.text}</p>` : ''}<button class="rc-delete" onclick="deleteReview(${i})">Delete</button></div>`;
-}
+async function loadAndRenderCloudReviews(id) {
+  const container = document.getElementById('cloudReviewsContainer');
+  if (!container || !window.loadCloudReviews) return;
+  
+  const reviews = await window.loadCloudReviews(id);
+  
+  if (reviews.length === 0) {
+    container.innerHTML = '<div style="text-align:center; padding: 20px; color: var(--text-muted);">No reviews yet. Be the first!</div>';
+    return;
+  }
 
-function deleteReview(idx) {
-  const reviews = getReviews(modalMovieId);
-  reviews.splice(idx, 1);
-  localStorage.setItem(`bka_reviews_${modalMovieId}`, JSON.stringify(reviews));
-  document.getElementById('pastReviews').innerHTML = reviews.map(renderReviewCard).join('');
-  showNotif('Review deleted 🗑️'); refreshGrid();
-}
+  // Calculate Distribution
+  const counts = { 5:0, 4:0, 3:0, 2:0, 1:0 };
+  reviews.forEach(r => { if(counts[r.val] !== undefined) counts[r.val]++; });
+  const total = reviews.length;
 
-function getReviews(id) { try { return JSON.parse(localStorage.getItem(`bka_reviews_${id}`) || '[]'); } catch { return []; } }
-function getUserRating(id) { const r = getReviews(id); return r.length ? RATINGS.find(x => x.val === r[0].val) || null : null; }
+  let distHtml = '<div class="review-distribution" style="margin-bottom: 20px; background: rgba(0,0,0,0.2); padding: 15px; border-radius: 8px;">';
+  distHtml += `<h4 style="margin-bottom: 10px; font-size: 1rem;">Community Ratings (${total})</h4>`;
+  RATINGS.forEach(r => {
+    const c = counts[r.val];
+    const pct = total > 0 ? Math.round((c / total) * 100) : 0;
+    distHtml += `
+      <div style="display: flex; align-items: center; margin-bottom: 5px; font-size: 0.85rem;">
+        <span style="width: 120px; color: var(--text-muted);">${r.emoji} ${r.label}</span>
+        <div style="flex: 1; height: 8px; background: rgba(255,255,255,0.1); border-radius: 4px; margin: 0 10px; overflow: hidden;">
+          <div style="height: 100%; width: ${pct}%; background: ${r.color}; border-radius: 4px;"></div>
+        </div>
+        <span style="width: 30px; text-align: right; color: ${r.color}; font-weight: 600;">${c}</span>
+      </div>
+    `;
+  });
+  distHtml += '</div>';
+
+  const reviewsHtml = '<div class="past-reviews">' + reviews.map(r => `
+    <div class="review-card" style="margin-bottom: 15px; padding: 15px; background: rgba(255,255,255,0.03); border: 1px solid var(--border); border-radius: 8px;">
+      <div class="rc-top" style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 8px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width:30px; height:30px; background: var(--primary); color: #fff; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: bold; font-size: 0.9rem;">
+            ${r.username.charAt(0).toUpperCase()}
+          </div>
+          <span style="font-weight: 600;">${r.username}</span>
+          <span style="color:${RATINGS.find(x => x.val === r.val)?.color || '#fff'}; font-size: 0.9rem;">${r.emoji} ${r.label}</span>
+        </div>
+        <span style="color: var(--text-muted); font-size: 0.8rem;">${r.date}</span>
+      </div>
+      ${r.text ? `<p style="margin: 0; color: #ddd; font-size: 0.9rem; line-height: 1.5;">${r.text}</p>` : ''}
+    </div>
+  `).join('') + '</div>';
+
+  container.innerHTML = distHtml + reviewsHtml;
+}
 
 async function refreshGrid() {
   currentPage = 1;
@@ -858,10 +975,43 @@ async function refreshGrid() {
 function closeModal() {
   const iframe = document.getElementById('videoPlayer');
   if (iframe) iframe.src = '';
-  document.getElementById('modalOverlay').classList.add('hidden');
-  document.body.style.overflow = '';
-  selectedRating = null;
+  div.innerHTML = `<div>⭐ ${rating}</div>`;
+  div.classList.add('review-toast');
+  document.body.appendChild(div);
+  setTimeout(() => div.remove(), 2000);
 }
+
+/* ===== CONTINUE WATCHING ===== */
+window.renderContinueWatching = function(history) {
+  const section = document.getElementById('continueWatchingSection');
+  const scroll = document.getElementById('continueWatchingScroll');
+  
+  if (!section || !scroll) return;
+  
+  if (!history || history.length === 0) {
+    section.classList.add('hidden');
+    scroll.innerHTML = '';
+    return;
+  }
+  
+  section.classList.remove('hidden');
+  
+  scroll.innerHTML = history.map(item => {
+    const isTv = item.mediaType === 'tv';
+    const epBadge = isTv && item.season ? `<div class="cw-badge">S${item.season} E${item.episode}</div>` : '';
+    
+    // The click handler redirects to movie.html (or auto-plays episode logic)
+    return `
+      <div class="cinema-card" onclick="openModal(${item.id}, '${item.mediaType}')">
+        <img src="${item.poster || 'data:image/svg+xml,<svg/>'}" alt="${item.title}" loading="lazy"/>
+        ${epBadge}
+        <div class="cinema-card-info">
+          <h4>${item.title}</h4>
+        </div>
+      </div>
+    `;
+  }).join('');
+};
 function closeModalOnOverlay(e) { if (e.target === document.getElementById('modalOverlay')) closeModal(); }
 
 /* ===== SIMILAR MOVIE FINDER LOGIC ===== */
@@ -895,8 +1045,8 @@ async function findSimilarMovies() {
     // 3. Fetch Recommendations in Parallel
     const [recs, actorMovies, directorMovies] = await Promise.all([
       tmdb(`/movie/${movieId}/recommendations`),
-      leadActor ? tmdb('/discover/movie', { with_cast: leadActor.id, sort_by: 'popularity.desc' }) : Promise.resolve({results:[]}),
-      director ? tmdb('/discover/movie', { with_crew: director.id, sort_by: 'popularity.desc' }) : Promise.resolve({results:[]})
+      leadActor ? tmdb('/discover/movie', { with_cast: leadActor.id, sort_by: 'popularity.desc' }) : Promise.resolve({ results: [] }),
+      director ? tmdb('/discover/movie', { with_crew: director.id, sort_by: 'popularity.desc' }) : Promise.resolve({ results: [] })
     ]);
 
     // 4. Render Rows
