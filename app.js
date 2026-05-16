@@ -205,6 +205,26 @@ async function loadHero() {
   renderHero(0);
   renderHeroDots();
   heroInterval = setInterval(() => { heroIdx = (heroIdx + 1) % heroMovies.length; renderHero(heroIdx); updateDots(); }, 6000);
+  setupHeroSwipe();
+}
+
+let touchStartX = 0;
+function setupHeroSwipe() {
+  const hero = document.getElementById('hero');
+  if (!hero) return;
+  hero.addEventListener('touchstart', e => {
+    touchStartX = e.changedTouches[0].screenX;
+  }, { passive: true });
+  hero.addEventListener('touchend', e => {
+    const touchEndX = e.changedTouches[0].screenX;
+    if (touchStartX - touchEndX > 50) {
+      // swipe left (next)
+      goHero((heroIdx + 1) % heroMovies.length);
+    } else if (touchEndX - touchStartX > 50) {
+      // swipe right (prev)
+      goHero((heroIdx - 1 + heroMovies.length) % heroMovies.length);
+    }
+  }, { passive: true });
 }
 
 function renderHero(idx) {
